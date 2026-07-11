@@ -1,6 +1,4 @@
 # SpoilerFreePlexSports
-# Phase 1: image runs the sfps CLI. The watcher daemon becomes the default
-# command in Phase 5.
 FROM python:3.12-slim
 
 # Links the GHCR package to this repo
@@ -22,4 +20,4 @@ VOLUME ["/watch", "/library", "/config"]
 USER sfps
 
 ENTRYPOINT ["sfps"]
-CMD ["config"]
+CMD ["daemon"]

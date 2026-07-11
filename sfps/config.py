@@ -62,6 +62,7 @@ class Config:
     timezone: str = "UTC"
     min_confidence: float = 0.6
     stability_seconds: int = 120
+    sweep_seconds: int = 300  # periodic re-scan of /watch (inotify safety net)
     media_extensions: tuple[str, ...] = (".ts", ".mkv", ".mp4")
     artwork_mode: str = "download"  # "download" | "generate"
     retry_days: int = 7
@@ -88,6 +89,7 @@ class Config:
             timezone=env.get("TZ", defaults.timezone),
             min_confidence=_float(env.get("MIN_CONFIDENCE"), defaults.min_confidence),
             stability_seconds=_int(env.get("STABILITY_SECONDS"), defaults.stability_seconds),
+            sweep_seconds=_int(env.get("SWEEP_SECONDS"), defaults.sweep_seconds),
             media_extensions=_extensions(env.get("MEDIA_EXTENSIONS"), defaults.media_extensions),
             artwork_mode=env.get("ARTWORK_MODE", defaults.artwork_mode).strip().lower(),
             retry_days=_int(env.get("RETRY_DAYS"), defaults.retry_days),

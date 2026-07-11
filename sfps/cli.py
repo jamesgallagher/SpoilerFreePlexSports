@@ -1,6 +1,7 @@
 """sfps command-line interface.
 
 Commands:
+    sfps daemon                          watch /watch and process recordings forever
     sfps process <file> [--dry-run]      run one file through the pipeline
     sfps identify <filename>             identify a game from a filename (no file needed)
     sfps match <json> [--download DIR]   match an identifier JSON against TheSportsDB
@@ -58,6 +59,8 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="DIR",
         help="also download the matched event's artwork into DIR",
     )
+
+    sub.add_parser("daemon", help="watch the watch dir and process new recordings forever")
 
     sub.add_parser("config", help="show effective configuration and any problems")
     sub.add_parser("version", help="print version and exit")
@@ -127,6 +130,20 @@ def cmd_match(config: Config, guess_arg: str, download_dir: Path | None) -> int:
     return 0
 
 
+def cmd_daemon(config: Config) -> int:
+    problems = config.validate()
+    if problems:
+        for p in problems:
+            log.log(logging.WARNING if config.dry_run else logging.ERROR, "config: %s", p)
+        if not config.dry_run:
+            log.error("daemon refusing to start with configuration problems")
+            return 1
+    from sfps.watcher import Daemon
+
+    Daemon(config).run()
+    return 0
+
+
 def cmd_process(config: Config, file: Path, dry_run: bool) -> int:
     dry_run = dry_run or config.dry_run
     problems = config.validate()
@@ -157,6 +174,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "config":
         return cmd_config(config)
+    if args.command == "daemon":
+        return cmd_daemon(config)
     if args.command == "identify":
         return cmd_identify(config, args.filename)
     if args.command == "match":
