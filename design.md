@@ -272,7 +272,7 @@ services:
       # - PLEX_URL=http://plex:32400
       # - PLEX_TOKEN=${PLEX_TOKEN}
     volumes:
-      - /path/to/staging:/watch      # where recordings land (Dispatcharr output)
+      - /path/to/staging:/watch      # where recordings land (any DVR/recorder output)
       - /path/to/sports-library:/library   # the Plex sports library root
       - ./config:/config             # ledger DB, unknown-event.jpg, overrides
     restart: unless-stopped
@@ -313,7 +313,7 @@ that walks the pipeline with stubbed stages.
 ### Phase 2 — Identifier
 Gemini client with JSON-schema structured output, prompt with date/timezone rules,
 regex pre-pass, confidence gating. Fixture suite of ~30 real recorded-sports
-filenames (to be collected from actual Dispatcharr output) with expected parses.
+filenames (collected from real recorder output) with expected parses.
 **Done when:** fixture suite passes; `sfps identify "<filename>"` prints the JSON guess.
 
 ### Phase 3 — Matcher

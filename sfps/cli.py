@@ -1,7 +1,8 @@
 """sfps command-line interface.
 
-Phase 1 commands:
+Commands:
     sfps process <file> [--dry-run]   run one file through the pipeline
+    sfps identify <filename>          identify a game from a filename (no file needed)
     sfps config                       show effective configuration + problems
     sfps version                      print version
 """
@@ -10,12 +11,14 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import json
 import logging
 import sys
 from pathlib import Path
 
 from sfps import __version__
 from sfps.config import Config
+from sfps.identifier import identify_name
 from sfps.log import setup_logging
 from sfps.pipeline import process_file
 
@@ -39,6 +42,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="log planned actions without moving or writing anything",
     )
 
+    p_identify = sub.add_parser(
+        "identify", help="identify a game from a filename string (file need not exist)"
+    )
+    p_identify.add_argument("filename", help="recording filename to interpret")
+
     sub.add_parser("config", help="show effective configuration and any problems")
     sub.add_parser("version", help="print version and exit")
     return parser
@@ -61,6 +69,21 @@ def cmd_config(config: Config) -> int:
         return 1
     print("\nconfiguration OK")
     return 0
+
+
+def cmd_identify(config: Config, filename: str) -> int:
+    if not config.gemini_api_key:
+        log.error("GEMINI_API_KEY is not set")
+        return 1
+    path = Path(filename)
+    mtime = None
+    if path.is_file():
+        from datetime import datetime
+
+        mtime = datetime.fromtimestamp(path.stat().st_mtime).astimezone()
+    guess = identify_name(path.name, mtime, config)
+    print(json.dumps(dataclasses.asdict(guess), indent=2))
+    return 0 if guess.identified else 3
 
 
 def cmd_process(config: Config, file: Path, dry_run: bool) -> int:
@@ -93,6 +116,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "config":
         return cmd_config(config)
+    if args.command == "identify":
+        return cmd_identify(config, args.filename)
     if args.command == "process":
         return cmd_process(config, args.file, args.dry_run)
 

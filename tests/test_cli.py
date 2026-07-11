@@ -42,3 +42,41 @@ def test_process_live_refuses_bad_config(tmp_path: Path, monkeypatch):
 def test_process_missing_file(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
     assert main(["process", "C:/does/not/exist.ts", "--dry-run"]) == 2
+
+
+def test_identify_prints_json_guess(capsys, monkeypatch):
+    import json as jsonlib
+
+    from sfps import gemini
+
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setattr(
+        gemini,
+        "generate_json",
+        lambda config, system_instruction, prompt, response_schema: jsonlib.dumps(
+            {
+                "identified": True,
+                "league": "Formula 1",
+                "event_name": "Miami Grand Prix Sprint Qualifying",
+                "event_date": "2026-05-02",
+                "confidence": 0.9,
+            }
+        ),
+    )
+    f1_name = "Formula_1_Highlights___Miami_Grand_Prix__Sprint_Qualifying_20260502_224400.ts"
+    rc = main(["identify", f1_name])
+    assert rc == 0
+    data = jsonlib.loads(capsys.readouterr().out)
+    assert data["event_name"] == "Miami Grand Prix Sprint Qualifying"
+    assert data["identified"] is True
+
+
+def test_identify_unidentified_exits_3(monkeypatch, capsys):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    # conftest offline stub returns identified=False
+    assert main(["identify", "mystery recording.ts"]) == 3
+
+
+def test_identify_requires_key(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    assert main(["identify", "anything.ts"]) == 1

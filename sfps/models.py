@@ -20,6 +20,7 @@ class GameGuess:
     league: str = ""
     home_team: str = ""
     away_team: str = ""
+    event_name: str = ""  # non-team events, e.g. "Miami Grand Prix Sprint Qualifying"
     event_date: str = ""  # ISO YYYY-MM-DD, event's local date
     round: str = ""  # e.g. "Matchweek 3", "Week 5", "Game 7"
     confidence: float = 0.0
