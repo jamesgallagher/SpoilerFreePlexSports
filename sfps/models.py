@@ -24,6 +24,7 @@ class GameGuess:
     event_date: str = ""  # ISO YYYY-MM-DD, event's local date
     round: str = ""  # e.g. "Matchweek 3", "Week 5", "Game 7"
     confidence: float = 0.0
+    variant: str = "full"  # "full" | "highlights" | "mini" (design.md §3.5)
     source: str = ""  # "regex" | "gemini" | "stub"
     notes: str = ""
 
@@ -33,6 +34,7 @@ class SafeEvent:
     """A verified sports event with all result information stripped."""
 
     event_id: str
+    name: str = ""  # e.g. "Arsenal vs Chelsea", "Miami Grand Prix"
     sport: str = ""
     league: str = ""
     season: str = ""

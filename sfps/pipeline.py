@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
 
 from sfps import identifier, matcher, organizer
@@ -42,7 +44,10 @@ def process_file(path: Path, config: Config, dry_run: bool = False) -> OrganizeR
         guess = _downgrade(guess)
 
     log.info("[2/3] match")
-    event = matcher.match(guess, config)
+    hint_date = None
+    with contextlib.suppress(OSError):
+        hint_date = datetime.fromtimestamp(path.stat().st_mtime).date()
+    event = matcher.match(guess, config, hint_date=hint_date)
 
     log.info("[3/3] organize")
     result = organizer.organize(path, guess, event, config, dry_run=dry_run)

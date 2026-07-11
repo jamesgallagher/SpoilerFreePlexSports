@@ -48,6 +48,42 @@ def test_invalid_timestamp_digits_ignored():
     assert identifier.extract_timestamp("show_20261399_990000.ts") is None
 
 
+# --- variant detection -------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("filename", "variant"),
+    [
+        (REAL_FILENAMES[2], "highlights"),  # the F1 Highlights sample
+        ("EPL Arsenal v Chelsea HL.mkv", "highlights"),
+        ("NRL.Round.5.HLS.ts", "highlights"),
+        ("Super Rugby Mini Crusaders v Blues.mkv", "mini"),
+        ("JWC South Africa v Wales.mkv", "full"),
+        # substrings must NOT trigger: 'hl' inside a word, 'mini' inside a word
+        ("Ashland vs Chlothar.mkv", "full"),
+        ("Minions League Final.mkv", "full"),
+    ],
+)
+def test_detect_variant(filename: str, variant: str):
+    assert identifier.detect_variant(filename) == variant
+
+
+def test_variant_carried_on_guess(monkeypatch, config: Config):
+    _mock_response(monkeypatch, {"identified": True, "confidence": 0.9})
+    guess = identifier.identify_name("EPL Arsenal v Chelsea HL.mkv", None, config)
+    assert guess.variant == "highlights"
+
+
+def test_variant_set_even_on_gemini_failure(monkeypatch, config: Config):
+    def boom(config, system_instruction, prompt, response_schema):
+        raise gemini.GeminiError("down")
+
+    monkeypatch.setattr(gemini, "generate_json", boom)
+    guess = identifier.identify_name("Mini Match Arsenal v Chelsea.mkv", None, config)
+    assert guess.variant == "mini"
+    assert not guess.identified
+
+
 # --- prompt building --------------------------------------------------------
 
 

@@ -12,6 +12,7 @@ import contextlib
 import json
 import logging
 import re
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
@@ -25,6 +26,22 @@ log = logging.getLogger(__name__)
 _TS_PATTERN = re.compile(r"(?<!\d)(20\d{2})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})(?!\d)")
 # Plain ISO date anywhere in the name: 2026-07-12
 _DATE_PATTERN = re.compile(r"(?<!\d)(20\d{2})-(\d{2})-(\d{2})(?!\d)")
+
+# Content-variant tokens (design.md §3.5). Filenames use _, ., - as separators
+# (which are word characters or regex specials), so tokenize instead of \b.
+_TOKEN_SPLIT = re.compile(r"[^A-Za-z0-9']+")
+_HIGHLIGHTS_TOKENS = {"hl", "hls", "highlights"}
+_MINI_TOKENS = {"mini"}
+
+
+def detect_variant(filename: str) -> str:
+    """Deterministic content-variant detection from filename tokens."""
+    tokens = {t.lower() for t in _TOKEN_SPLIT.split(filename) if t}
+    if tokens & _HIGHLIGHTS_TOKENS:
+        return "highlights"
+    if tokens & _MINI_TOKENS:
+        return "mini"
+    return "full"
 
 SYSTEM_INSTRUCTION = """\
 You identify sports events from DVR/PVR recording filenames.
@@ -135,17 +152,22 @@ def _parse_response(text: str) -> GameGuess:
 
 def identify_name(filename: str, mtime: datetime | None, config: Config) -> GameGuess:
     """Identify a game from a filename string (file need not exist)."""
+    variant = detect_variant(filename)
     prompt = _build_prompt(filename, mtime, config)
     log.debug("identify prompt:\n%s", prompt)
     try:
         text = gemini.generate_json(config, SYSTEM_INSTRUCTION, prompt, RESPONSE_SCHEMA)
-        guess = _parse_response(text)
+        guess = replace(_parse_response(text), variant=variant)
     except gemini.GeminiError as exc:
         log.warning("identify: Gemini call failed (%s) -> unidentified", exc)
-        return GameGuess(identified=False, source="gemini", notes=f"gemini error: {exc}")
+        return GameGuess(
+            identified=False, variant=variant, source="gemini", notes=f"gemini error: {exc}"
+        )
     except (json.JSONDecodeError, ValueError, TypeError) as exc:
         log.warning("identify: unparseable Gemini response (%s) -> unidentified", exc)
-        return GameGuess(identified=False, source="gemini", notes=f"bad response: {exc}")
+        return GameGuess(
+            identified=False, variant=variant, source="gemini", notes=f"bad response: {exc}"
+        )
 
     log.info(
         "identify: identified=%s league='%s' teams='%s vs %s' event='%s' "

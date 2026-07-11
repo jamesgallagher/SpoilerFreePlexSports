@@ -1,10 +1,11 @@
 """sfps command-line interface.
 
 Commands:
-    sfps process <file> [--dry-run]   run one file through the pipeline
-    sfps identify <filename>          identify a game from a filename (no file needed)
-    sfps config                       show effective configuration + problems
-    sfps version                      print version
+    sfps process <file> [--dry-run]      run one file through the pipeline
+    sfps identify <filename>             identify a game from a filename (no file needed)
+    sfps match <json> [--download DIR]   match an identifier JSON against TheSportsDB
+    sfps config                          show effective configuration + problems
+    sfps version                         print version
 """
 
 from __future__ import annotations
@@ -47,6 +48,17 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_identify.add_argument("filename", help="recording filename to interpret")
 
+    p_match = sub.add_parser(
+        "match", help="match an identifier JSON (string or @file) against TheSportsDB"
+    )
+    p_match.add_argument("guess", help="GameGuess JSON string, or @path/to/guess.json")
+    p_match.add_argument(
+        "--download",
+        type=Path,
+        metavar="DIR",
+        help="also download the matched event's artwork into DIR",
+    )
+
     sub.add_parser("config", help="show effective configuration and any problems")
     sub.add_parser("version", help="print version and exit")
     return parser
@@ -86,6 +98,35 @@ def cmd_identify(config: Config, filename: str) -> int:
     return 0 if guess.identified else 3
 
 
+def cmd_match(config: Config, guess_arg: str, download_dir: Path | None) -> int:
+    from sfps.matcher import download_artwork, match
+    from sfps.models import GameGuess
+
+    raw = guess_arg
+    if raw.startswith("@"):
+        # utf-8-sig: tolerate the BOM that Windows PowerShell redirection adds
+        raw = Path(raw[1:]).read_text(encoding="utf-8-sig")
+    try:
+        data = json.loads(raw)
+        field_names = {f.name for f in dataclasses.fields(GameGuess)}
+        guess = GameGuess(**{k: v for k, v in data.items() if k in field_names})
+    except (json.JSONDecodeError, TypeError) as exc:
+        log.error("invalid guess JSON: %s", exc)
+        return 2
+
+    event = match(guess, config)
+    if event is None:
+        print(json.dumps({"matched": False}))
+        return 3
+
+    result = {"matched": True, **dataclasses.asdict(event)}
+    if download_dir:
+        saved = download_artwork(event, download_dir, config)
+        result["downloaded"] = {kind: str(path) for kind, path in saved.items()}
+    print(json.dumps(result, indent=2))
+    return 0
+
+
 def cmd_process(config: Config, file: Path, dry_run: bool) -> int:
     dry_run = dry_run or config.dry_run
     problems = config.validate()
@@ -118,6 +159,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_config(config)
     if args.command == "identify":
         return cmd_identify(config, args.filename)
+    if args.command == "match":
+        return cmd_match(config, args.guess, args.download)
     if args.command == "process":
         return cmd_process(config, args.file, args.dry_run)
 
