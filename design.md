@@ -206,6 +206,7 @@ Local Media Assets enabled):
   "venue": "Emirates Stadium",
   "thesportsdb_event_id": "1032723",
   "identifier": {"source": "gemini", "confidence": 0.92},
+  "variant": "full",
   "artwork": {"thumb": "downloaded", "poster": "downloaded", "background": "none"},
   "processed_at": "2026-07-12T21:14:03+10:00",
   "spoiler_free": true
@@ -221,7 +222,38 @@ Local Media Assets enabled):
   The ledger marks it `unknown` for later retry/manual fix. **The placeholder is
   itself a spoiler-free win**: it still pre-empts Plex's frame-grab.
 
-### 3.5 Retry & review (hardening phase)
+### 3.5 Content variants: Highlights & Mini
+
+A recording is often not the full game. Filename tokens mark the variant:
+
+| Tokens (case-insensitive, word-boundary) | Variant | Meaning |
+|---|---|---|
+| `HL`, `HLS`, `Highlights` | `highlights` | Highlights package |
+| `Mini` | `mini` | Condensed / mini match |
+| *(none)* | `full` | Full game (default) |
+
+Handling across the pipeline:
+
+- **Detection** is a deterministic regex pre-pass in the identifier (not left to
+  Gemini), run on the raw filename. The variant is carried on `GameGuess` and
+  through to the sidecar.
+- **Matching:** variant tokens are stripped before event lookup — a highlights
+  package matches the *same* TheSportsDB event as the full game.
+- **Artwork:** the variant uses the main game's thumb and poster, with a small
+  **badge composited onto the thumb** (Pillow, bottom-right corner): a
+  "HIGHLIGHTS" badge or a "MINI" badge. Badge assets live in `/config/badges/`
+  (`highlights.png`, `mini.png`) and are user-replaceable; temporary generated
+  badges (text-on-pill) are used until supplied — same approach as the
+  Unknown Event placeholder.
+- **Naming:** the variant is appended to the game folder and episode title —
+  `Arsenal vs Chelsea 2026-07-12 (Highlights)` — so a full game and its
+  highlights package of the **same event** coexist without collision, and the
+  variant is visible in Plex without opening the item.
+- **Sidecar:** `variant` field is `full` | `highlights` | `mini`; the
+  human-readable description says "Highlights package" / "Condensed match"
+  (still spoiler-free — never e.g. "all 5 goals").
+
+### 3.6 Retry & review (hardening phase)
 
 - TheSportsDB is crowd-sourced; an event sometimes appears/gets artwork days after
   airing. A scheduled retry pass re-attempts `unknown` and `artwork-incomplete`
@@ -229,7 +261,7 @@ Local Media Assets enabled):
 - A tiny `review` CLI lists unknowns and lets you force a match by event ID
   (`sfps review --set-event 1032723 <file>`), re-running the organizer.
 
-### 3.6 Optional: Plex partial rescan
+### 3.7 Optional: Plex partial rescan
 
 Deliberately **optional** (not in the core "job done" path): when `PLEX_URL` +
 `PLEX_TOKEN` are set, after organizing, call
@@ -325,7 +357,9 @@ downloaded artwork to a temp dir; unit tests cover date-boundary and name-varian
 ### Phase 4 — Organizer
 Folder/naming builder, atomic move with cross-device fallback, Local Media Assets
 artwork placement, `game.json` sidecar, Unknown Event path with generated temp
-placeholder (Pillow).
+placeholder (Pillow). Content-variant handling (§3.5): HL/HLS/Highlights/Mini
+detection, variant token stripping before match, `(Highlights)`/`(Mini)` naming,
+badge compositing onto the thumb with user-replaceable badge assets.
 **Done when:** `sfps process <file>` fully organizes a real recording into a test
 library and a manual Plex scan shows the game with the supplied thumb, no frame-grab.
 
