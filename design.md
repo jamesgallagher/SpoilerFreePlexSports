@@ -241,6 +241,12 @@ step is skipped silently.
 
 ## 4. Deployment (Docker)
 
+**Target platform: unRAID.** The image is published to GHCR as
+`ghcr.io/jamesgallagher/spoilerfreeplexsports:latest` on **every commit to main**
+(CI `publish` job; linux/amd64 + arm64). No version tags / pinning — unRAID pulls
+the rolling `latest`. An unRAID Community Applications template XML is a Phase 6
+deliverable.
+
 ### Image
 
 - Base: `python:3.12-slim`; deps: `watchdog`, `httpx`, `google-genai`, `Pillow`,
@@ -330,10 +336,12 @@ Daemon becomes the container's default command.
 organized game with zero manual steps.
 
 ### Phase 6 — Docker & deployment polish
-Compose file, PUID/PGID handling, healthcheck, GHCR image build via GitHub Actions,
-deployment guide **including the Plex library settings checklist** (Local Media
-Assets on, video preview thumbnails off, date-based TV library pointed at `/library`).
-**Done when:** clean-machine deploy from README alone works.
+Compose file, PUID/PGID handling, healthcheck, unRAID Community Applications
+template XML, deployment guide **including the Plex library settings checklist**
+(Local Media Assets on, video preview thumbnails off, date-based TV library pointed
+at `/library`). *(GHCR image publishing was pulled forward and already ships on
+every commit to main.)*
+**Done when:** clean unRAID deploy from the template + README alone works.
 
 ### Phase 7 — Hardening & quality of life
 Retry pass for unknowns/missing artwork, `sfps review` manual-match CLI, generated

@@ -3,6 +3,10 @@
 # command in Phase 5.
 FROM python:3.12-slim
 
+# Links the GHCR package to this repo
+LABEL org.opencontainers.image.source="https://github.com/jamesgallagher/SpoilerFreePlexSports"
+LABEL org.opencontainers.image.description="Spoiler-free sports organizer for Plex"
+
 # Non-root user; PUID/PGID remapping arrives with the Phase 6 entrypoint.
 RUN groupadd -g 1000 sfps && useradd -u 1000 -g sfps -m sfps
 

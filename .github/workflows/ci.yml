@@ -34,3 +34,30 @@ jobs:
             -e GEMINI_API_KEY=ci-smoke-test \
             -v "$PWD/watchdir:/watch" \
             sfps:ci process "/watch/EPL Arsenal vs Chelsea 2026-07-12.ts" --dry-run
+
+  # Publish a rolling :latest image to GHCR on every commit to main
+  # (no version tags — unRAID pulls ghcr.io/jamesgallagher/spoilerfreeplexsports:latest)
+  publish:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [test, docker]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/jamesgallagher/spoilerfreeplexsports:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
