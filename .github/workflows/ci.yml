@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install -e .[dev]
+      - name: Lint
+        run: ruff check .
+      - name: Test
+        run: pytest -v
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t sfps:ci .
+      - name: Smoke test — dry-run a fake recording through the pipeline
+        run: |
+          mkdir -p watchdir
+          head -c 1024 /dev/zero > "watchdir/EPL Arsenal vs Chelsea 2026-07-12.ts"
+          docker run --rm \
+            -e GEMINI_API_KEY=ci-smoke-test \
+            -v "$PWD/watchdir:/watch" \
+            sfps:ci process "/watch/EPL Arsenal vs Chelsea 2026-07-12.ts" --dry-run
