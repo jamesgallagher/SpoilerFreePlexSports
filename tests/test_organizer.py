@@ -131,6 +131,13 @@ def test_organize_matched(config: Config, recording: Path, fake_downloads):
     assert sidecar["variant"] == "full"
     assert sidecar["spoiler_free"] is True
     assert sidecar["artwork"]["thumb"] == "downloaded"
+    # enriched metadata
+    assert sidecar["title"] == "Texas Super Kings vs Washington Freedom"
+    assert "Major League Cricket" in sidecar["summary"]
+    assert sidecar["venue"] == "Grand Prairie Stadium"
+    # episode NFO for the Plex card, plus a show-level tvshow.nfo
+    assert (target / f"{stem}.nfo").is_file()
+    assert (config.library_dir / "Major League Cricket" / "tvshow.nfo").is_file()
 
 
 def test_sidecar_never_contains_scores(config: Config, recording: Path, fake_downloads):

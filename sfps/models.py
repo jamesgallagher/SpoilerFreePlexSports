@@ -43,6 +43,8 @@ class SafeEvent:
     away_team: str = ""
     event_date: str = ""  # ISO YYYY-MM-DD
     venue: str = ""
+    city: str = ""
+    country: str = ""
     # Artwork URLs by kind: "thumb" | "poster" | "fanart" | "banner" | "square"
     artwork: dict[str, str] = field(default_factory=dict)
 

@@ -194,10 +194,22 @@ Local Media Assets enabled):
       Arsenal vs Chelsea 2026-07-12/
         English Premier League - 2026-07-12 - Arsenal vs Chelsea.mkv
         English Premier League - 2026-07-12 - Arsenal vs Chelsea.jpg   # episode thumb (spoiler-free)
+        English Premier League - 2026-07-12 - Arsenal vs Chelsea.nfo   # Kodi episode NFO (Plex NFO agent)
         poster.jpg                  # game poster (if available)
         background.jpg              # game background (if available)
         game.json                   # spoiler-free metadata sidecar
 ```
+
+- **Metadata enrichment (matched events only):** `metadata.py` builds a
+  spoiler-free summary from the available TheSportsDB fields (sport, league,
+  round, participants, venue/city/country, date) and writes a Kodi
+  `episodedetails` `.nfo` (`<title>`=strEvent, `<plot>`=summary, `<aired>`) next
+  to the video plus a `tvshow.nfo` at the league folder. Plex's built-in NFO
+  agent (PMS 1.43.1+) reads these onto the card; with the plain TV agent the
+  files are harmlessly ignored (artwork still applies via Local Media Assets).
+  The same fields + `summary` + `title` are added to `game.json`. Everything is
+  built from `SafeEvent`, so no score can leak. (Resolves the §6 open question
+  about pushing summaries into Plex — done via NFO, no API/credentials needed.)
 
 - Filenames follow Plex's date-based episode convention
   (`Show - YYYY-MM-DD - Title.ext`) so the stock Plex TV agent orders them

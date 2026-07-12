@@ -103,6 +103,8 @@ def _to_safe_event(raw: dict) -> SafeEvent:
         away_team=str(raw.get("strAwayTeam") or ""),
         event_date=str(raw.get("dateEvent") or ""),
         venue=str(raw.get("strVenue") or ""),
+        city=str(raw.get("strCity") or ""),
+        country=str(raw.get("strCountry") or ""),
         artwork=artwork,
     )
 

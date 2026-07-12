@@ -100,17 +100,21 @@ GROQ_API_KEY=your-key docker compose up -d
 
 ## Setting up the Plex library (important!)
 
-Create a **TV Shows** library pointed at your library folder, then in that
-library's settings:
+Create a **TV Shows** library pointed at your library folder. For each matched
+game the service writes three things: local artwork, a Kodi-style `.nfo`
+(title, description, date), and its own `game.json` record. How much of that
+Plex shows depends on the library's **Agent**:
 
 | Setting | Value | Why |
 |---|---|---|
-| Scanner / Agent | Plex TV Series | Date-based episode naming is used |
+| **Agent** | **Plex NFO** (recommended) | Reads the `.nfo` so the card shows the enriched title + description (e.g. *"Rugby Nations Championship (Round 2): Australia Rugby vs France Rugby at Suncorp Stadium, Brisbane on 11 July 2026."*). Requires **PMS 1.43.1+**. Falls back to **Plex TV Series** if you only want artwork. |
 | **Local Media Assets** | **Enabled**, ordered **first** (Settings → Agents) | This is how the spoiler-free thumbs/posters get used |
 | **Video preview thumbnails** | **Disabled** | Plex generates these from the video — they leak scores on the seek bar |
 | Seasons | Show | One season per year per league |
 
-Leave "Generate chapter thumbnails" off for the same reason.
+Leave "Generate chapter thumbnails" off for the same reason. With the **Plex
+NFO** agent you get the full enriched card; with **Plex TV Series** you still
+get the spoiler-free artwork, just not the text description.
 
 ## Configuration
 

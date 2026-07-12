@@ -22,7 +22,7 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
-from sfps import artwork, matcher
+from sfps import artwork, matcher, metadata
 from sfps.config import Config
 from sfps.models import GameGuess, OrganizeResult, SafeEvent
 
@@ -96,6 +96,8 @@ def _write_sidecar(
     if event is not None:
         payload = {
             "matched": True,
+            "title": metadata.display_title(event),
+            "summary": metadata.build_summary(event, guess.variant),
             "sport": event.sport,
             "league": event.league,
             "season": event.season,
@@ -105,6 +107,8 @@ def _write_sidecar(
             "event_name": event.name,
             "event_date": event.event_date,
             "venue": event.venue,
+            "city": event.city,
+            "country": event.country,
             "thesportsdb_event_id": event.event_id,
         }
     else:
@@ -319,6 +323,12 @@ def organize(
             ]
             if art_status.get(key, "none") != "none"
         ]
+        # Enrich the Plex card (NFO agent reads these). Matched events only.
+        metadata.write_episode_nfo(event, target_dir / f"{media_target.stem}.nfo", guess.variant)
+        if event.league:
+            metadata.write_show_nfo(
+                event.league, event.sport, target_dir.parent.parent / "tvshow.nfo"
+            )
         status = "organized"
 
     sidecar = _write_sidecar(target_dir, path.name, guess, event, art_status)
