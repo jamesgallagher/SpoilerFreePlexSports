@@ -32,19 +32,62 @@ still beats Plex's frame-grab.
 
 ## Quick start — unRAID
 
-1. **Docker tab → Template Repositories** (bottom of page) → add:
-   `https://github.com/jamesgallagher/SpoilerFreePlexSports`
-2. **Add Container** → select the *SpoilerFreePlexSports* template.
-3. Fill in:
-   - **Watch folder** — where your recorder writes files (files are *moved out*
-     once processed). Do **not** point this at the library itself.
-   - **Library folder** — the share your Plex sports library reads from.
-   - **Gemini API key** — get one at https://aistudio.google.com/apikey
-   - **Timezone** — your recorder's timezone (matters for overnight games).
-4. Apply. The container starts the watcher daemon and is health-checked via a
-   heartbeat.
+unRAID's "Template repositories" field for third-party template URLs has been
+deprecated in favor of Community Applications, so the reliable way to install
+a personal-project image like this one is to **add the container manually** —
+no template needed.
 
-Files are created as `PUID:PGID` (defaults 99:100, unRAID's `nobody:users`).
+1. Make sure the GHCR image is public: it must be pullable without
+   credentials (see [Publishing](#publishing) below if you maintain a fork).
+2. **Docker tab → Add Container**.
+3. Toggle **Advanced View** (top right) and fill in:
+
+   | Field | Value |
+   |---|---|
+   | **Name** | `SpoilerFreePlexSports` |
+   | **Repository** | `ghcr.io/jamesgallagher/spoilerfreeplexsports:latest` |
+   | **Registry URL** | `https://ghcr.io/jamesgallagher/spoilerfreeplexsports` |
+   | **Icon URL** | `https://raw.githubusercontent.com/jamesgallagher/SpoilerFreePlexSports/main/assets/icon.png` |
+   | **WebUI** | *(leave blank — this is a headless daemon, no web interface)* |
+   | **Network Type** | `bridge` (no ports are used; networking doesn't matter) |
+
+4. **Add Path, Port, Variable...** three times for the volumes:
+
+   | Config Type | Name | Container Path | Host Path |
+   |---|---|---|---|
+   | Path | Watch folder | `/watch` | your staging/recording folder — files are *moved out* once processed; don't point this at the library itself |
+   | Path | Library folder | `/library` | the share your Plex sports library reads from |
+   | Path | App data | `/config` | e.g. `/mnt/user/appdata/spoilerfreeplexsports` — ledger DB, heartbeat, custom badges/placeholder art |
+
+5. **Add Path, Port, Variable...** again for each variable:
+
+   | Config Type | Name | Key | Value | Notes |
+   |---|---|---|---|---|
+   | Variable | Gemini API key | `GEMINI_API_KEY` | *your key* | **required** — get one at https://aistudio.google.com/apikey |
+   | Variable | TheSportsDB API key | `THESPORTSDB_API_KEY` | `123` | free/dev key; a $9/mo premium key raises rate limits |
+   | Variable | Timezone | `TZ` | e.g. `Australia/Sydney` | matters for overnight games crossing a date boundary |
+   | Variable | PUID | `PUID` | `99` | unRAID's `nobody` |
+   | Variable | PGID | `PGID` | `100` | unRAID's `users` |
+
+   The rest of the [configuration table](#configuration) below is optional —
+   add any of those the same way if you want to override a default.
+
+6. **Apply**. The container starts the watcher daemon and is health-checked
+   via a heartbeat (`docker ps` will show it as `healthy` once running).
+
+Files are created as `PUID:PGID` (99:100 above = unRAID's `nobody:users`).
+
+<a name="publishing"></a>
+> **Maintainer note:** the image is built and published to GHCR automatically
+> by CI on every push to `main`. If you fork this repo, make your package
+> public once: GitHub → your profile → **Packages** →
+> `spoilerfreeplexsports` → Package settings → Change visibility → Public —
+> otherwise unRAID's pull will fail with 401 Unauthorized.
+
+A ready-made [unRAID template XML](templates/spoilerfreeplexsports.xml) also
+lives in this repo (used if `Community Applications` ever indexes this
+project, or if you self-host a template repository) — the manual steps above
+give the exact same result.
 
 ## Quick start — docker compose
 
