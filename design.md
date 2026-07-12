@@ -95,11 +95,17 @@ run and tested standalone via a CLI before the daemon wires them together.
 
 ### 3.1 Watcher
 
-- Python `watchdog` observer on `/watch` (recursive).
+- Python `watchdog` observer on `/watch` (recursive — subfolders are traversed by
+  both the observer and the sweep).
 - **File-stability gate:** sports recordings are written over hours. A file is only
   "ready" when its size has been unchanged for `STABILITY_SECONDS` (default 120) and
-  it is openable for exclusive read. Handles `.ts`, `.mkv`, `.mp4` (configurable
-  `MEDIA_EXTENSIONS`).
+  it is openable — a changing filesize means an ongoing recording and the file is
+  left alone.
+- **Main-video-only filter:** only `.mp4`, `.mkv`, `.avi`, `.mov`, `.mpeg`, `.ts`
+  are processed (configurable `MEDIA_EXTENSIONS`); everything else is ignored.
+- **Hidden files are ignored:** any file or directory whose name starts with `.`
+  (recorder temp files, macOS `._*` AppleDouble) plus known junk dirs (`@eaDir`)
+  are skipped during both event handling and sweeps.
 - **Ledger:** a small SQLite DB in `/config` records every file processed (by path +
   size + mtime hash) with its outcome (`matched`, `unknown`, `error`). Prevents
   reprocessing on restart; also powers the retry queue (§3.5).
@@ -189,7 +195,9 @@ Local Media Assets enabled):
   (`Show - YYYY-MM-DD - Title.ext`) so the stock Plex TV agent orders them
   correctly without episode numbers.
 - **Move, not copy** (same volume ⇒ atomic rename; cross-device fallback:
-  copy + verify size + delete source).
+  copy + verify size + delete source). Setting `PRESERVE_ORIGINAL=true` switches
+  to copy-only: the original stays in `/watch` (the ledger fingerprint prevents it
+  being processed again; managing the accumulating originals is the user's call).
 - **Sidecar `game.json`** (machine-readable; a human-readable `game.txt` twin is a
   cheap add-on):
 
@@ -320,7 +328,8 @@ services:
 | `TZ` | yes | UTC | Date reasoning for overnight games |
 | `MIN_CONFIDENCE` | no | `0.6` | Below ⇒ Unknown Event path |
 | `STABILITY_SECONDS` | no | `120` | File-finished detection |
-| `MEDIA_EXTENSIONS` | no | `.ts,.mkv,.mp4` | Files to process |
+| `MEDIA_EXTENSIONS` | no | `.mp4,.mkv,.avi,.mov,.mpeg,.ts` | Files to process (all else ignored) |
+| `PRESERVE_ORIGINAL` | no | `false` | `true` = copy into library, leave original in `/watch` |
 | `ARTWORK_MODE` | no | `download` | `generate` = never use downloaded event art |
 | `RETRY_DAYS` | no | `7` | Re-attempt unknowns/missing art |
 | `PLEX_URL` / `PLEX_TOKEN` | no | — | Enables optional partial rescan |
@@ -376,6 +385,19 @@ template XML, deployment guide **including the Plex library settings checklist**
 at `/library`). *(GHCR image publishing was pulled forward and already ships on
 every commit to main.)*
 **Done when:** clean unRAID deploy from the template + README alone works.
+
+### Phase 6.5 — Intake filters & preserve mode *(added 2026-07-12)*
+Feasibility-checked against the Phase 5 implementation; all sane, two of the five
+requested behaviours already shipped (stability gate = changing-filesize monitor;
+recursive traversal of subfolders — both covered by existing tests).
+Remaining work:
+1. Default `MEDIA_EXTENSIONS` becomes `.mp4,.mkv,.avi,.mov,.mpeg,.ts`.
+2. Hidden-file rule: skip dot-prefixed files/dirs and `@eaDir` in observer + sweep.
+3. `PRESERVE_ORIGINAL` toggle (default `false` = move): copy-only mode leaving the
+   original in `/watch`; ledger prevents reprocessing; surface in compose +
+   unRAID template.
+**Done when:** tests cover all three; a preserved original survives a sweep without
+being reprocessed.
 
 ### Phase 7 — Hardening & quality of life
 Retry pass for unknowns/missing artwork, `sfps review` manual-match CLI, generated
