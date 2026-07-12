@@ -96,6 +96,9 @@ def _write_sidecar(
     if event is not None:
         payload = {
             "matched": True,
+            # "event" = a specific verified TheSportsDB event; "league" = the
+            # teamless competition-art fallback (no specific event id).
+            "match_level": "event" if event.event_id else "league",
             "title": metadata.display_title(event),
             "summary": metadata.build_summary(event, guess.variant),
             "sport": event.sport,

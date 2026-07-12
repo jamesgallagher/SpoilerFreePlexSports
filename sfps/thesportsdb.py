@@ -124,6 +124,13 @@ class TheSportsDBClient:
         events = data.get("events") or []
         return events[0] if events else None
 
+    def lookup_league(self, league_id: str) -> dict | None:
+        """lookupleague.php — one league's details incl. competition-level
+        artwork (poster/banner/fanart). Used by the teamless-event fallback."""
+        data = self._get("/lookupleague.php", {"id": league_id})
+        leagues = data.get("leagues") or []
+        return leagues[0] if leagues else None
+
     def search_teams(self, name: str) -> list[dict]:
         """searchteams.php — teams by name (badge lookup for generated art)."""
         data = self._get("/searchteams.php", {"t": name.replace(" ", "_")})

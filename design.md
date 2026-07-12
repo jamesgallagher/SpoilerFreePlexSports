@@ -243,6 +243,20 @@ Local Media Assets enabled):
 
   *(Note what is absent: scores, winner, status, highlights links.)*
 
+- **Teamless league-art fallback:** races, tours and individual events (Tour de
+  France, a Grand Prix) identify to a *competition* but often have no verifiable
+  per-stage event on TheSportsDB. Rather than dropping these to Unknown, the
+  matcher (`league_fallback`) discovers the competition's league by searching
+  events by the competition name and reading the winning event's `idLeague`
+  (the LLM's viewer-facing name — "Tour de France" — rarely matches the DB's
+  broader league — "UCI World Tour" — so an event→league link is used, not a
+  league-name match), then looks that league up and uses its **poster / banner /
+  fanart** as the recording's artwork. Competition branding is generic and
+  structurally cannot reveal a result, so this is spoiler-safe; the item is
+  filed under the competition (`match_level: "league"` in the sidecar, empty
+  `thesportsdb_event_id`). Team games are left to the badge-vs-badge card — a
+  real matchup card beats a league poster there.
+
 - **Unknown Event path:** if identification or matching fails, the file still gets
   organized — into `/library/Unknown Events/<original name>/` — with a supplied
   `unknown-event.jpg` placeholder as the thumb (a temporary generated one — plain
@@ -437,7 +451,7 @@ touching the filesystem by hand.
 | # | Risk / question | Current position |
 |---|---|---|
 | 1 | **Wrong match = wrong artwork on wrong game.** | Confidence gate + team+date verification; below threshold ⇒ Unknown placeholder (safe failure). |
-| 2 | **TheSportsDB per-game artwork is sparse** outside big leagues. | Fall back league/team art → generated badge composite (Phase 7) → placeholder. Thumb is the must-have; poster/background best-effort. |
+| 2 | **TheSportsDB per-game artwork is sparse** outside big leagues. | Fall back league/team art → generated badge composite (Phase 7) → placeholder. Teamless events (races/tours) with no verifiable event fall back to competition-level league art (`league_fallback`) before Unknown. Thumb is the must-have; poster/background best-effort. |
 | 3 | **Downloaded event art could itself contain a result.** | Rare but real; `ARTWORK_MODE=generate` is the zero-risk escape hatch. |
 | 4 | **Plex may still frame-grab** if it scans before art exists. | Staging-folder deployment means art always lands with (before) the media file. |
 | 5 | **Overnight/timezone date shifts.** | `TZ` env + ±1-day search window + Gemini prompt rules; fixture-tested. |

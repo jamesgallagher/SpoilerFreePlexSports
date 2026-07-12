@@ -127,6 +127,7 @@ def test_organize_matched(config: Config, recording: Path, fake_downloads):
 
     sidecar = json.loads((target / "game.json").read_text(encoding="utf-8"))
     assert sidecar["matched"] is True
+    assert sidecar["match_level"] == "event"
     assert sidecar["thesportsdb_event_id"] == "2466440"
     assert sidecar["variant"] == "full"
     assert sidecar["spoiler_free"] is True
@@ -145,6 +146,51 @@ def test_sidecar_never_contains_scores(config: Config, recording: Path, fake_dow
     text = Path(result.sidecar).read_text(encoding="utf-8").lower()
     for banned in ("score", "winner", "result", "won by", "status"):
         assert banned not in text
+
+
+def test_organize_league_fallback_files_under_competition(
+    config: Config, recording: Path, fake_downloads
+):
+    """A teamless league-art SafeEvent (event_id="") is filed under the
+    competition folder with match_level='league', not into Unknown Events."""
+    league_event = SafeEvent(
+        event_id="",
+        name="Tour de France Stage 8 Highlights",
+        sport="Cycling",
+        league="UCI World Tour",
+        round="Stage 8",
+        event_date="2026-07-12",
+        artwork={
+            "thumb": "https://img.example/league/fanart.jpg",
+            "poster": "https://img.example/league/poster.jpg",
+            "fanart": "https://img.example/league/fanart.jpg",
+        },
+    )
+    guess = GameGuess(
+        identified=True,
+        sport="Cycling",
+        league="Tour de France",
+        event_name="Tour de France Stage 8 Highlights",
+        event_date="2026-07-12",
+        round="Stage 8",
+        variant="highlights",
+        confidence=0.95,
+        source="groq",
+    )
+    result = organizer.organize(recording, guess, league_event, config, dry_run=False)
+
+    assert result.status == "organized"
+    target = Path(result.target_dir)
+    assert "UCI World Tour" in str(target)
+    assert "Unknown Events" not in str(target)
+    assert target.name.endswith("(Highlights)")
+
+    sidecar = json.loads((target / "game.json").read_text(encoding="utf-8"))
+    assert sidecar["matched"] is True
+    assert sidecar["match_level"] == "league"
+    assert sidecar["thesportsdb_event_id"] == ""
+    assert sidecar["artwork"]["thumb"] == "downloaded+badge"
+    assert sidecar["spoiler_free"] is True
 
 
 def test_organize_highlights_badges_thumb(config: Config, recording: Path, fake_downloads):

@@ -190,6 +190,12 @@ docker exec spoilerfreeplexsports sfps health     # heartbeat check
 - Matched games with no downloadable event art get a **generated
   badge-vs-badge card** built from the teams' real badges (with a neutral
   text card as the last resort).
+- **Teamless events** — races, tours, individual sports (e.g. a Tour de
+  France stage) — that identify to a competition but have no verifiable
+  per-event record fall back to the **competition's own poster/banner**
+  from TheSportsDB and are filed under that competition, instead of landing
+  in Unknown Events. Competition branding can't reveal a result, so it stays
+  spoiler-safe.
 
 ## Development
 

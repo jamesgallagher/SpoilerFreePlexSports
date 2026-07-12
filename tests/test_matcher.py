@@ -529,6 +529,136 @@ def test_team_badges_no_fallback_when_sport_already_matches():
     assert set(urls) == {"home", "away"}
 
 
+# --- league-art fallback for teamless events ---------------------------------
+
+
+# A raw league payload as lookupleague.php returns it (UCI World Tour / cycling).
+RAW_LEAGUE = {
+    "idLeague": "4465",
+    "strLeague": "UCI World Tour",
+    "strSport": "Cycling",
+    "strPoster": "https://img.example/league/poster.jpg",
+    "strBanner": "https://img.example/league/banner.jpg",
+    "strFanart1": "https://img.example/league/fanart.jpg",
+    "strBadge": "https://img.example/league/badge.png",
+}
+
+# A teamless guess: a Tour de France stage the identifier named a competition
+# for but that TheSportsDB has no verifiable specific event for.
+TEAMLESS_GUESS = GameGuess(
+    identified=True,
+    sport="Cycling",
+    league="Tour de France",
+    event_name="Tour de France Stage 8 Highlights",
+    event_date="2026-07-12",
+    round="Stage 8",
+    variant="highlights",
+    confidence=0.95,
+    source="groq",
+)
+
+
+def _tour_event(**over):
+    return {
+        "idEvent": "9001",
+        "strEvent": "Tour de France Stage 21",
+        "strSport": "Cycling",
+        "strLeague": "UCI World Tour",
+        "idLeague": "4465",
+        "dateEvent": "2026-07-26",
+        **over,
+    }
+
+
+def _league_fallback_handler(**flags):
+    """Handler serving searchevents (event->league link) then lookupleague."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "searchevents.php" in request.url.path:
+            if flags.get("no_events"):
+                return events_response()
+            return events_response(_tour_event(**flags.get("event_over", {})))
+        if "lookupleague.php" in request.url.path:
+            params = parse_qs(urlparse(str(request.url)).query)
+            assert params["id"][0] == "4465"
+            league = flags.get("league", RAW_LEAGUE)
+            return httpx.Response(200, json={"leagues": [league] if league else None})
+        raise AssertionError(f"unexpected call: {request.url}")
+
+    return handler
+
+
+def test_league_artwork_urls_whitelists_and_prefers_landscape_thumb():
+    urls = matcher.league_artwork_urls(RAW_LEAGUE)
+    assert urls == {
+        "thumb": "https://img.example/league/fanart.jpg",  # fanart preferred for 16:9 thumb
+        "poster": "https://img.example/league/poster.jpg",
+        "fanart": "https://img.example/league/fanart.jpg",
+    }
+
+
+def test_league_artwork_urls_thumb_falls_back_to_banner_then_poster():
+    assert matcher.league_artwork_urls({"strBanner": "b", "strPoster": "p"})["thumb"] == "b"
+    assert matcher.league_artwork_urls({"strPoster": "p"})["thumb"] == "p"
+    assert matcher.league_artwork_urls({}) == {}
+
+
+def test_league_fallback_files_teamless_event_with_league_art():
+    with make_client(_league_fallback_handler()) as client:
+        event = matcher.league_fallback(TEAMLESS_GUESS, CONFIG, client=client)
+    assert event is not None
+    assert event.event_id == ""  # league-level art, not a specific verified event
+    assert event.league == "UCI World Tour"  # the DB's league, not the LLM's "Tour de France"
+    assert event.name == "Tour de France Stage 8 Highlights"
+    assert event.sport == "Cycling"
+    assert event.event_date == "2026-07-12"
+    assert event.artwork["thumb"] == "https://img.example/league/fanart.jpg"
+
+
+def test_league_fallback_skips_team_games():
+    """Team games keep the badge-vs-badge card path; league art is teamless-only."""
+    with make_client(_league_fallback_handler()) as client:
+        assert matcher.league_fallback(GUESS, CONFIG, client=client) is None
+
+
+def test_league_fallback_none_when_no_league_discovered():
+    with make_client(_league_fallback_handler(no_events=True)) as client:
+        assert matcher.league_fallback(TEAMLESS_GUESS, CONFIG, client=client) is None
+
+
+def test_league_fallback_none_when_league_has_no_art():
+    handler = _league_fallback_handler(league={"idLeague": "4465", "strLeague": "UCI World Tour"})
+    with make_client(handler) as client:
+        assert matcher.league_fallback(TEAMLESS_GUESS, CONFIG, client=client) is None
+
+
+def test_league_fallback_discovery_ignores_wrong_sport_event():
+    """A same-named event in another sport must not hijack the league lookup."""
+    handler = _league_fallback_handler(event_over={"strSport": "Soccer", "idLeague": "999"})
+    with make_client(handler) as client:
+        assert matcher.league_fallback(TEAMLESS_GUESS, CONFIG, client=client) is None
+
+
+def test_league_fallback_uses_hint_date_when_guess_has_none():
+    guess = dataclasses.replace(TEAMLESS_GUESS, event_date="")
+    with make_client(_league_fallback_handler()) as client:
+        event = matcher.league_fallback(
+            guess, CONFIG, hint_date=date(2026, 7, 12), client=client
+        )
+    assert event is not None
+    assert event.event_date == "2026-07-12"
+
+
+def test_league_fallback_skips_unidentified():
+    with make_client(_league_fallback_handler()) as client:
+        assert matcher.league_fallback(GameGuess(identified=False), CONFIG, client=client) is None
+
+
+def test_league_fallback_survives_api_outage():
+    with make_client(lambda r: httpx.Response(503)) as client:
+        assert matcher.league_fallback(TEAMLESS_GUESS, CONFIG, client=client) is None
+
+
 # --- artwork download ---------------------------------------------------------
 
 

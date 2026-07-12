@@ -368,3 +368,110 @@ def team_badges(
 def to_safe_event(raw: dict) -> SafeEvent:
     """Public spoiler-firewall crossing for raw event payloads (retry/review)."""
     return _to_safe_event(raw)
+
+
+def league_artwork_urls(raw: dict) -> dict[str, str]:
+    """Whitelist a raw league payload's branding into artwork kinds.
+
+    League/competition art (a tournament poster, banner, fanart) is generic to
+    the competition and structurally cannot reveal a result, so it is the safe
+    fallback for teamless events. The episode thumb wants a landscape image, so
+    it prefers fanart, then the banner, then the poster.
+    """
+    fanart = str(raw.get("strFanart1") or "")
+    banner = str(raw.get("strBanner") or "")
+    poster = str(raw.get("strPoster") or "")
+    urls: dict[str, str] = {}
+    thumb = fanart or banner or poster
+    if thumb:
+        urls["thumb"] = thumb
+    if poster:
+        urls["poster"] = poster
+    if fanart:
+        urls["fanart"] = fanart
+    return urls
+
+
+def _discover_league(client: TheSportsDBClient, guess: GameGuess) -> dict | None:
+    """Find the TheSportsDB league for a teamless guess via its own events.
+
+    The LLM names competitions the way viewers do ("Tour de France"), but
+    TheSportsDB files those events under a broader league ("UCI World Tour"),
+    so a league-*name* match is unreliable. Searching events by the competition
+    name and reading the winning event's `idLeague` follows TheSportsDB's own
+    event->league link instead, then looks the league up for its artwork.
+    """
+    query = guess.league or guess.event_name
+    if not query:
+        return None
+    for raw in client.search_events(query):
+        if not _sport_matches(guess.sport, str(raw.get("strSport") or "")):
+            continue
+        league_id = str(raw.get("idLeague") or "")
+        if league_id:
+            return client.lookup_league(league_id)
+    return None
+
+
+def league_fallback(
+    guess: GameGuess,
+    config: Config,
+    hint_date: date | None = None,
+    client: TheSportsDBClient | None = None,
+) -> SafeEvent | None:
+    """Teamless-event fallback: a SafeEvent carrying league-level artwork.
+
+    For races, tours and other individual events we can identify to a
+    competition but not to a specific verified event, file the recording under
+    the competition using its own poster/banner/fanart rather than dropping it
+    into Unknown Events with a generated card. Team games are left to the
+    badge-vs-badge card path (a real matchup card beats a league poster there).
+
+    Returns None whenever there is no confident teamless identification, no
+    discoverable league, or no usable league art — leaving the caller's
+    existing Unknown Event handling untouched.
+    """
+    if not guess.identified:
+        return None
+    if guess.home_team and guess.away_team:
+        return None  # team games use the badge matchup card, not league art
+    if not (guess.event_name or guess.league):
+        return None
+
+    own_client = client is None
+    if own_client:
+        client = TheSportsDBClient(config)
+    try:
+        raw_league = _discover_league(client, guess)
+    except TheSportsDBError as exc:
+        log.warning("league fallback: TheSportsDB unavailable (%s) -> no fallback", exc)
+        return None
+    finally:
+        if own_client:
+            client.close()
+
+    if not raw_league:
+        log.info("league fallback: no league found for '%s' -> no fallback", guess.league)
+        return None
+    urls = league_artwork_urls(raw_league)
+    if "thumb" not in urls:
+        log.info("league fallback: league '%s' has no usable art -> no fallback", guess.league)
+        return None
+
+    event_date = guess.event_date or (hint_date.isoformat() if hint_date else "")
+    event = SafeEvent(
+        event_id="",  # league-level art, not a specific verified event
+        name=guess.event_name or guess.league,
+        sport=guess.sport or str(raw_league.get("strSport") or ""),
+        league=str(raw_league.get("strLeague") or guess.league),
+        round=guess.round,
+        event_date=event_date,
+        artwork=urls,
+    )
+    log.info(
+        "league fallback: filing '%s' under league '%s' with league art (%s)",
+        event.name,
+        event.league,
+        ",".join(sorted(urls)),
+    )
+    return event

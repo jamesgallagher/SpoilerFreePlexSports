@@ -146,6 +146,8 @@ def retry_unknowns(config: Config) -> dict[str, int]:
         hint_date = datetime.fromtimestamp(media.stat().st_mtime).date()
         event = matcher.match(guess, config, hint_date=hint_date)
         if event is None:
+            event = matcher.league_fallback(guess, config, hint_date=hint_date)
+        if event is None:
             log.info("retry: %s identified but still unmatched", media.name)
             if _upgrade_unknown_artwork(target_dir, guess, config):
                 stats["artwork_upgraded"] += 1

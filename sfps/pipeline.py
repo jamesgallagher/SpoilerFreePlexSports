@@ -48,6 +48,11 @@ def process_file(path: Path, config: Config, dry_run: bool = False) -> OrganizeR
     with contextlib.suppress(OSError):
         hint_date = datetime.fromtimestamp(path.stat().st_mtime).date()
     event = matcher.match(guess, config, hint_date=hint_date)
+    if event is None:
+        # Teamless events (races, tours) we can name a competition for but not
+        # a specific event: file under the competition with its league art
+        # rather than dropping to the Unknown Event path (design.md §3.4).
+        event = matcher.league_fallback(guess, config, hint_date=hint_date)
 
     log.info("[3/3] organize")
     result = organizer.organize(path, guess, event, config, dry_run=dry_run)
