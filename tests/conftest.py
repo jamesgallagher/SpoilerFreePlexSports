@@ -28,4 +28,6 @@ def _no_real_badge_lookups(monkeypatch):
     Tests of the real function bind it directly at import time
     (`from sfps.matcher import team_badges`), which bypasses this stub.
     """
-    monkeypatch.setattr(matcher, "team_badges", lambda event, config, client=None: {})
+    monkeypatch.setattr(
+        matcher, "team_badges", lambda home_team, away_team, config, sport="", client=None: {}
+    )

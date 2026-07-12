@@ -154,7 +154,7 @@ def place_downloaded(kind: str, src: Path, target_dir: Path, episode_stem: str) 
 
 def generate_thumb(event: SafeEvent, thumb_path: Path, config: Config) -> str:
     """Generate a spoiler-free thumb: badge matchup card, else neutral text card."""
-    urls = matcher.team_badges(event, config)
+    urls = matcher.team_badges(event.home_team, event.away_team, config, sport=event.sport)
     if len(urls) == 2:
         with tempfile.TemporaryDirectory(dir=thumb_path.parent) as tmp:
             badges = matcher.download_urls(urls, Path(tmp), config)
@@ -174,6 +174,53 @@ def generate_thumb(event: SafeEvent, thumb_path: Path, config: Config) -> str:
         thumb_path, _matchup(event), subtitle=event.league, footer=event.event_date
     )
     return "generated"
+
+
+def generate_unmatched_thumb(guess: GameGuess, thumb_path: Path, config: Config) -> str:
+    """Best-effort spoiler-free thumb for a recording Gemini identified but that
+    TheSportsDB could not verify — most often because the competition (e.g. a
+    brand-new tournament) simply isn't indexed there yet. Identification not
+    matching a database record is not the same as identification failing, so
+    this still tries a real team-badge matchup card before falling back to a
+    descriptive text card, and only shows a bare "Unknown Event" card when
+    nothing at all was identified.
+    """
+    if guess.home_team and guess.away_team:
+        urls = matcher.team_badges(guess.home_team, guess.away_team, config, sport=guess.sport)
+        if len(urls) == 2:
+            with tempfile.TemporaryDirectory(dir=thumb_path.parent) as tmp:
+                badges = matcher.download_urls(urls, Path(tmp), config)
+                if len(badges) == 2:
+                    try:
+                        artwork.generate_matchup_card(
+                            thumb_path,
+                            badges["home"],
+                            badges["away"],
+                            subtitle=f"{guess.home_team} vs {guess.away_team}",
+                            footer=guess.league or guess.sport,
+                        )
+                        return "generated-badges-unverified"
+                    except OSError as exc:
+                        log.warning("artwork: unmatched badge card failed (%s)", exc)
+        artwork.generate_card(
+            thumb_path,
+            f"{guess.home_team} vs {guess.away_team}",
+            subtitle=guess.league or guess.sport,
+            footer=guess.event_date,
+        )
+        return "generated-unverified"
+
+    if guess.event_name:
+        artwork.generate_card(
+            thumb_path,
+            guess.event_name,
+            subtitle=guess.league or guess.sport,
+            footer=guess.event_date,
+        )
+        return "generated-unverified"
+
+    artwork.generate_card(thumb_path, "Unknown Event", subtitle=thumb_path.stem[:70])
+    return "placeholder-generated"
 
 
 def _place_artwork(
@@ -254,8 +301,7 @@ def organize(
             shutil.copyfile(custom, thumb_path)
             art_status = {"thumb": "placeholder-custom"}
         else:
-            artwork.generate_card(thumb_path, "Unknown Event", subtitle=path.stem[:70])
-            art_status = {"thumb": "placeholder-generated"}
+            art_status = {"thumb": generate_unmatched_thumb(guess, thumb_path, config)}
         if guess.variant in artwork.BADGE_LABELS and artwork.apply_badge(
             thumb_path, guess.variant, config
         ):

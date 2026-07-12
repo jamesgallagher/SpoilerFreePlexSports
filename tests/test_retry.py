@@ -105,7 +105,7 @@ def test_retry_unknowns_reorganizes(config: Config, monkeypatch, no_downloads):
 
     stats = retry.retry_unknowns(config)
 
-    assert stats == {"eligible": 1, "matched": 1}
+    assert stats == {"eligible": 1, "matched": 1, "artwork_upgraded": 0}
     assert not unknown_dir.exists(), "unknown dir must be cleaned up"
     new_dir = (
         config.library_dir
@@ -122,22 +122,51 @@ def test_retry_unknowns_reorganizes(config: Config, monkeypatch, no_downloads):
 
 
 def test_retry_unknowns_leaves_still_unmatched(config: Config, monkeypatch, no_downloads):
+    """Still unmatched (e.g. a brand-new competition TheSportsDB hasn't
+    indexed) but now GUESS carries team names -> the placeholder artwork
+    should be upgraded from the bare 'Unknown Event' card even without a
+    TheSportsDB match (conftest stubs team_badges to {}, so this exercises
+    the descriptive-text fallback, not the badge-card path)."""
     unknown_dir = make_unknown(config)
+    before = json.loads((unknown_dir / "game.json").read_text(encoding="utf-8"))
+    assert before["artwork"]["thumb"] == "placeholder-generated"
+
     monkeypatch.setattr(identifier, "identify", lambda path, cfg: GUESS)
     monkeypatch.setattr(
         matcher, "match", lambda guess, cfg, hint_date=None, client=None: None
     )
 
     stats = retry.retry_unknowns(config)
-    assert stats == {"eligible": 1, "matched": 0}
+    assert stats == {"eligible": 1, "matched": 0, "artwork_upgraded": 1}
     assert unknown_dir.exists()
+    after = json.loads((unknown_dir / "game.json").read_text(encoding="utf-8"))
+    assert after["artwork"]["thumb"] == "generated-unverified"
+
+
+def test_retry_unknowns_no_upgrade_when_already_custom(config: Config, monkeypatch, no_downloads):
+    """A user-supplied unknown-event.jpg placeholder must never be silently
+    replaced by the retry pass."""
+    unknown_dir = make_unknown(config)
+    data = json.loads((unknown_dir / "game.json").read_text(encoding="utf-8"))
+    data["artwork"]["thumb"] = "placeholder-custom"
+    (unknown_dir / "game.json").write_text(json.dumps(data), encoding="utf-8")
+
+    monkeypatch.setattr(identifier, "identify", lambda path, cfg: GUESS)
+    monkeypatch.setattr(
+        matcher, "match", lambda guess, cfg, hint_date=None, client=None: None
+    )
+
+    stats = retry.retry_unknowns(config)
+    assert stats == {"eligible": 1, "matched": 0, "artwork_upgraded": 0}
+    after = json.loads((unknown_dir / "game.json").read_text(encoding="utf-8"))
+    assert after["artwork"]["thumb"] == "placeholder-custom"
 
 
 def test_retry_unknowns_respects_window(config: Config, monkeypatch, no_downloads):
     make_unknown(config)
     monkeypatch.setattr(retry, "_within_window", lambda iso, days: False)
     stats = retry.retry_unknowns(config)
-    assert stats == {"eligible": 0, "matched": 0}
+    assert stats == {"eligible": 0, "matched": 0, "artwork_upgraded": 0}
 
 
 # --- retry_artwork ------------------------------------------------------------

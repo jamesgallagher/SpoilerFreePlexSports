@@ -97,13 +97,18 @@ def test_retry_command(monkeypatch, capsys, tmp_path: Path):
     from sfps import retry
 
     monkeypatch.setenv("CONFIG_DIR", str(tmp_path))
-    monkeypatch.setattr(retry, "retry_unknowns", lambda cfg: {"eligible": 2, "matched": 1})
+    monkeypatch.setattr(
+        retry,
+        "retry_unknowns",
+        lambda cfg: {"eligible": 2, "matched": 1, "artwork_upgraded": 1},
+    )
     monkeypatch.setattr(
         retry, "retry_artwork", lambda cfg, client=None: {"checked": 3, "updated": 2}
     )
     assert main(["retry"]) == 0
     out = capsys.readouterr().out
     assert "2 eligible, 1 matched" in out
+    assert "1 artwork upgraded" in out
     assert "3 checked, 2 updated" in out
 
 

@@ -196,6 +196,82 @@ def test_match_falls_back_to_eventsday():
     assert event is not None
 
 
+def test_find_league_id_rejects_wrong_sport(monkeypatch):
+    """Reproduces the real bug: 'World Rugby Nations Championship' name-scored
+    0.54 against 'English League Championship' (Soccer) - just over the 0.5
+    threshold on shared vocabulary alone. Sport filtering must reject it."""
+    leagues = [
+        {"idLeague": "4329", "strLeague": "English League Championship", "strSport": "Soccer"},
+    ]
+    with make_client(lambda r: httpx.Response(200, json={"leagues": leagues})) as client:
+        assert (
+            matcher._find_league_id(client, "World Rugby Nations Championship", "Rugby Union")
+            is None
+        )
+
+
+def test_find_league_id_accepts_matching_sport():
+    leagues = [
+        {"idLeague": "4986", "strLeague": "World Rugby Championship", "strSport": "Rugby"},
+        {"idLeague": "4329", "strLeague": "English League Championship", "strSport": "Soccer"},
+    ]
+    with make_client(lambda r: httpx.Response(200, json={"leagues": leagues})) as client:
+        found = matcher._find_league_id(client, "World Rugby Nations Championship", "Rugby Union")
+    assert found == "4986"
+
+
+def test_find_league_id_fails_open_when_sport_field_missing():
+    """Defensive default: don't reject a league just because a response omits
+    strSport (the real API always sets it; only test mocks might not)."""
+    leagues = [{"idLeague": "1", "strLeague": "World Rugby Nations Championship"}]
+    with make_client(lambda r: httpx.Response(200, json={"leagues": leagues})) as client:
+        found = matcher._find_league_id(client, "World Rugby Nations Championship", "Rugby Union")
+    assert found == "1"
+
+
+def test_unmatched_new_tournament_does_not_chase_wrong_league():
+    """End-to-end reproduction of the Australia v France log: a brand-new
+    competition has zero events anywhere, and a same-worded wrong-sport league
+    must not be treated as a candidate (previously wasted 3 eventsday calls
+    chasing English League Championship / Soccer)."""
+    guess = GameGuess(
+        identified=True,
+        sport="Rugby Union",
+        league="World Rugby Nations Championship",
+        home_team="Australia",
+        away_team="France",
+        event_date="2026-07-11",
+        confidence=0.85,
+        source="gemini",
+    )
+    eventsday_calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "searchevents.php" in request.url.path:
+            return events_response()
+        if "all_leagues.php" in request.url.path:
+            return httpx.Response(
+                200,
+                json={
+                    "leagues": [
+                        {
+                            "idLeague": "4329",
+                            "strLeague": "English League Championship",
+                            "strSport": "Soccer",
+                        }
+                    ]
+                },
+            )
+        if "eventsday.php" in request.url.path:
+            eventsday_calls.append(str(request.url))
+            return httpx.Response(200, json={"events": []})
+        raise AssertionError(f"unexpected call: {request.url}")
+
+    with make_client(handler) as client:
+        assert matcher.match(guess, CONFIG, client=client) is None
+    assert eventsday_calls == []  # no league found -> step 3 skipped entirely
+
+
 def test_match_rejects_unverified_candidate():
     wrong = dict(RAW_EVENT, strHomeTeam="Seattle Orcas", strAwayTeam="MI New York")
 
@@ -251,12 +327,21 @@ def test_team_badges_found():
         name = query.replace("_", " ")
         return httpx.Response(
             200,
-            json={"teams": [{"strTeam": name, "strBadge": f"https://img.example/{name}.png"}]},
+            json={
+                "teams": [
+                    {
+                        "strTeam": name,
+                        "strSport": "Cricket",
+                        "strBadge": f"https://img.example/{name}.png",
+                    }
+                ]
+            },
         )
 
-    event = matcher._to_safe_event(RAW_EVENT)
     with make_client(handler) as client:
-        urls = real_team_badges(event, CONFIG, client=client)
+        urls = real_team_badges(
+            "Texas Super Kings", "Washington Freedom", CONFIG, sport="Cricket", client=client
+        )
     assert set(urls) == {"home", "away"}
     assert "Texas Super Kings" in urls["home"]
 
@@ -264,21 +349,88 @@ def test_team_badges_found():
 def test_team_badges_rejects_wrong_team():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
-            200, json={"teams": [{"strTeam": "Chennai Super Kings", "strBadge": "https://x/b.png"}]}
+            200,
+            json={
+                "teams": [
+                    {
+                        "strTeam": "Chennai Super Kings",
+                        "strSport": "Cricket",
+                        "strBadge": "https://x/b.png",
+                    }
+                ]
+            },
         )
 
-    event = matcher._to_safe_event(RAW_EVENT)
     with make_client(handler) as client:
-        urls = real_team_badges(event, CONFIG, client=client)
+        urls = real_team_badges(
+            "Texas Super Kings", "Washington Freedom", CONFIG, sport="Cricket", client=client
+        )
     # "Chennai Super Kings" vs "Washington Freedom" must not fuzzy-match
     assert "away" not in urls
 
 
 def test_team_badges_empty_for_non_team_event():
-    raw = dict(RAW_EVENT, strHomeTeam="", strAwayTeam="")
-    event = matcher._to_safe_event(raw)
     with make_client(lambda r: httpx.Response(200, json={"teams": None})) as client:
-        assert real_team_badges(event, CONFIG, client=client) == {}
+        assert real_team_badges("", "", CONFIG, sport="Cricket", client=client) == {}
+
+
+def test_team_badges_falls_back_to_sport_qualified_query():
+    """A bare country name ('Australia') only resolves to its Soccer entry on
+    TheSportsDB; the Rugby team is indexed as 'Australia Rugby'. The first,
+    unqualified query must be tried, rejected for wrong sport, and a second
+    sport-qualified query attempted before giving up."""
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        query = parse_qs(urlparse(str(request.url)).query)["t"][0]
+        calls.append(query)
+        if query == "Australia":
+            return httpx.Response(
+                200,
+                json={"teams": [{"strTeam": "Australia", "strSport": "Soccer", "strBadge": "https://x/soccer.png"}]},
+            )
+        if query == "Australia_Rugby":
+            return httpx.Response(
+                200,
+                json={
+                    "teams": [
+                        {
+                            "strTeam": "Australia Rugby",
+                            "strSport": "Rugby",
+                            "strBadge": "https://x/rugby.png",
+                        }
+                    ]
+                },
+            )
+        return httpx.Response(200, json={"teams": None})
+
+    with make_client(handler) as client:
+        urls = real_team_badges("Australia", "France", CONFIG, sport="Rugby Union", client=client)
+    assert calls[0] == "Australia"  # unqualified query tried first
+    assert "Australia_Rugby" in calls  # sport-qualified fallback was attempted
+    assert urls.get("home") == "https://x/rugby.png"  # correct sport selected, not soccer
+
+
+def test_team_badges_no_fallback_when_sport_already_matches():
+    """If the unqualified query already yields a sport-correct badge for both
+    sides, no qualified fallback query is issued (saves API calls)."""
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        query = parse_qs(urlparse(str(request.url)).query)["t"][0]
+        calls.append(query)
+        name = query.replace("_", " ")
+        return httpx.Response(
+            200,
+            json={"teams": [{"strTeam": name, "strSport": "Cricket", "strBadge": f"https://x/{name}.png"}]},
+        )
+
+    with make_client(handler) as client:
+        urls = real_team_badges(
+            "Texas Super Kings", "Washington Freedom", CONFIG, sport="Cricket", client=client
+        )
+    assert calls == ["Texas_Super_Kings", "Washington_Freedom"]
+    assert set(urls) == {"home", "away"}
 
 
 # --- artwork download ---------------------------------------------------------

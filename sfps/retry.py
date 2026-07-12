@@ -90,10 +90,47 @@ def _reorganize(
     return result
 
 
+# If the placeholder still shows this status, a smarter card (badges or at
+# least a descriptive text card) hasn't been tried yet - worth an upgrade
+# attempt. Anything else (a custom asset, or a card we already generated our
+# best effort for) is left alone.
+_UPGRADEABLE_THUMB_STATUSES = {"placeholder-generated"}
+
+
+def _upgrade_unknown_artwork(directory: Path, guess: GameGuess, config: Config) -> bool:
+    """Refresh an Unknown Events thumb in place using a re-identified guess.
+
+    Handles recordings that Gemini identifies correctly but TheSportsDB has
+    no record of yet (e.g. a brand-new competition) - those still deserve a
+    real team-badge matchup card instead of a bare "Unknown Event" label.
+    """
+    data = _read_sidecar(directory)
+    current = str((data.get("artwork") or {}).get("thumb", ""))
+    if current not in _UPGRADEABLE_THUMB_STATUSES:
+        return False
+    media = _find_media(directory, config)
+    if media is None:
+        return False
+
+    thumb_path = directory / f"{media.stem}.jpg"
+    new_status = organizer.generate_unmatched_thumb(guess, thumb_path, config)
+    if new_status == current:
+        return False
+
+    art = data.get("artwork") or {}
+    art["thumb"] = new_status
+    data["artwork"] = art
+    (directory / "game.json").write_text(
+        json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+    log.info("retry: upgraded placeholder art for %s (%s -> %s)", media.name, current, new_status)
+    return True
+
+
 def retry_unknowns(config: Config) -> dict[str, int]:
     """Re-attempt identification+matching for recent Unknown Events entries."""
     ledger = Ledger(config.config_dir / "ledger.db")
-    stats = {"eligible": 0, "matched": 0}
+    stats = {"eligible": 0, "matched": 0, "artwork_upgraded": 0}
     for entry in ledger.entries(status="unknown"):
         if not _within_window(entry["processed_at"], config.retry_days):
             continue
@@ -110,11 +147,18 @@ def retry_unknowns(config: Config) -> dict[str, int]:
         event = matcher.match(guess, config, hint_date=hint_date)
         if event is None:
             log.info("retry: %s identified but still unmatched", media.name)
+            if _upgrade_unknown_artwork(target_dir, guess, config):
+                stats["artwork_upgraded"] += 1
             continue
         result = _reorganize(media, guess, event, config, ledger, target_dir)
         if result.status == "organized":
             stats["matched"] += 1
-    log.info("retry: unknowns pass done - %d eligible, %d matched", *stats.values())
+    log.info(
+        "retry: unknowns pass done - %d eligible, %d matched, %d artwork upgraded",
+        stats["eligible"],
+        stats["matched"],
+        stats["artwork_upgraded"],
+    )
     return stats
 
 

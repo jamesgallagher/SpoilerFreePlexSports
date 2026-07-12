@@ -155,7 +155,8 @@ def cmd_retry(config: Config) -> int:
     unknowns = retry_unknowns(config)
     art = retry_artwork(config)
     print(
-        f"unknowns: {unknowns['eligible']} eligible, {unknowns['matched']} matched\n"
+        f"unknowns: {unknowns['eligible']} eligible, {unknowns['matched']} matched, "
+        f"{unknowns['artwork_upgraded']} artwork upgraded\n"
         f"artwork:  {art['checked']} checked, {art['updated']} updated"
     )
     return 0

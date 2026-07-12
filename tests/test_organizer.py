@@ -211,7 +211,10 @@ def test_generated_badge_matchup_card(config: Config, recording: Path, monkeypat
     monkeypatch.setattr(
         matcher,
         "team_badges",
-        lambda event, cfg, client=None: {"home": "http://x/h.png", "away": "http://x/a.png"},
+        lambda home, away, cfg, sport="", client=None: {
+            "home": "http://x/h.png",
+            "away": "http://x/a.png",
+        },
     )
 
     def fake_badge_downloads(urls, dest_dir, cfg, client=None):
@@ -251,6 +254,112 @@ def test_organize_unknown_placeholder(config: Config, recording: Path):
     sidecar = json.loads((target / "game.json").read_text(encoding="utf-8"))
     assert sidecar["matched"] is False
     assert sidecar["original_filename"] == recording.name
+
+
+def test_organize_unknown_but_identified_uses_badge_matchup_card(
+    config: Config, recording: Path, monkeypatch
+):
+    """Reproduces the Australia v France log: Gemini identifies the game but
+    TheSportsDB has no record of the (brand-new) competition. The result must
+    be a real team-badge card, not a bare 'Unknown Event' label."""
+    from PIL import Image as PILImage
+
+    guess = GameGuess(
+        identified=True,
+        sport="Rugby Union",
+        league="World Rugby Nations Championship",
+        home_team="Australia",
+        away_team="France",
+        event_date="2026-07-11",
+        confidence=0.85,
+        variant="highlights",
+        source="gemini",
+    )
+    monkeypatch.setattr(
+        matcher,
+        "team_badges",
+        lambda home, away, cfg, sport="", client=None: {
+            "home": "http://x/aus.png",
+            "away": "http://x/fra.png",
+        },
+    )
+
+    def fake_badge_downloads(urls, dest_dir, cfg, client=None):
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        out = {}
+        for kind, color in (("home", (200, 180, 20)), ("away", (0, 60, 160))):
+            p = dest_dir / f"{kind}.png"
+            PILImage.new("RGBA", (200, 200), color).save(p, "PNG")
+            out[kind] = p
+        return out
+
+    monkeypatch.setattr(matcher, "download_urls", fake_badge_downloads)
+
+    result = organizer.organize(recording, guess, None, config, dry_run=False)
+
+    assert result.status == "unknown"
+    target = Path(result.target_dir)
+    sidecar = json.loads((target / "game.json").read_text(encoding="utf-8"))
+    assert sidecar["matched"] is False
+    assert sidecar["home_team"] == "Australia"
+    assert sidecar["artwork"]["thumb"] == "generated-badges-unverified+badge"  # + Highlights badge
+    thumb = target / f"{recording.stem}.jpg"
+    assert PILImage.open(thumb).size == (1280, 720)
+
+
+def test_organize_unknown_but_identified_no_badges_uses_descriptive_text(
+    config: Config, recording: Path
+):
+    """No badges available (conftest stub returns {}) -> still better than the
+    bare 'Unknown Event' label: a descriptive team/league text card."""
+    guess = GameGuess(
+        identified=True,
+        sport="Rugby Union",
+        league="World Rugby Nations Championship",
+        home_team="Australia",
+        away_team="France",
+        event_date="2026-07-11",
+        confidence=0.85,
+        source="gemini",
+    )
+    result = organizer.organize(recording, guess, None, config, dry_run=False)
+    sidecar = json.loads((Path(result.target_dir) / "game.json").read_text(encoding="utf-8"))
+    assert sidecar["artwork"]["thumb"] == "generated-unverified"
+    assert sidecar["artwork"]["thumb"] != "placeholder-generated"
+
+
+def test_organize_unknown_event_name_only_uses_descriptive_text(config: Config, recording: Path):
+    """Non-team sports (e.g. motorsport) identified-but-unmatched: event_name
+    drives the card, not the bare filename."""
+    guess = GameGuess(
+        identified=True,
+        sport="Motorsport",
+        event_name="Miami Grand Prix Sprint Qualifying",
+        event_date="2026-05-01",
+        confidence=0.9,
+        source="gemini",
+    )
+    result = organizer.organize(recording, guess, None, config, dry_run=False)
+    sidecar = json.loads((Path(result.target_dir) / "game.json").read_text(encoding="utf-8"))
+    assert sidecar["artwork"]["thumb"] == "generated-unverified"
+    assert sidecar["event_name"] == "Miami Grand Prix Sprint Qualifying"
+
+
+def test_organize_unknown_custom_asset_wins_even_when_identified(
+    config: Config, recording: Path
+):
+    """A user-supplied unknown-event.jpg always takes priority, even over an
+    identified guess that could produce a badge card."""
+    custom = config.config_dir / "unknown-event.jpg"
+    custom.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", (640, 360), (80, 0, 0)).save(custom, "JPEG")
+
+    guess = GameGuess(
+        identified=True, home_team="Australia", away_team="France", confidence=0.85
+    )
+    result = organizer.organize(recording, guess, None, config, dry_run=False)
+    sidecar = json.loads((Path(result.target_dir) / "game.json").read_text(encoding="utf-8"))
+    assert sidecar["artwork"]["thumb"] == "placeholder-custom"
 
 
 def test_organize_unknown_uses_custom_asset(config: Config, recording: Path):

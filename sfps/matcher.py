@@ -28,6 +28,7 @@ log = logging.getLogger(__name__)
 # Similarity thresholds (0-1) for fuzzy verification
 _TEAM_THRESHOLD = 0.7
 _LEAGUE_THRESHOLD = 0.5
+_SPORT_THRESHOLD = 0.4  # e.g. "Rugby Union" vs "Rugby" must pass; vs "Soccer" must not
 
 # Which artwork fields cross the firewall, and what we call them
 _ARTWORK_FIELDS = {
@@ -126,9 +127,21 @@ def _verify(raw: dict, guess: GameGuess, dates: list[date]) -> bool:
     return True
 
 
-def _find_league_id(client: TheSportsDBClient, league_name: str) -> str | None:
+def _find_league_id(client: TheSportsDBClient, league_name: str, sport: str = "") -> str | None:
+    """Best-matching league id, sport-filtered to avoid cross-sport false positives.
+
+    League names share a lot of generic vocabulary ("Championship", "League",
+    "Cup"), so name similarity alone can score a same-worded league in the
+    wrong sport above threshold (e.g. "World Rugby Nations Championship" vs
+    "English League Championship" scores 0.54 on name alone). Reject any
+    league whose sport clearly doesn't match first. Fails open when a mocked/
+    partial API response omits strSport, since the real API always sets it.
+    """
     best_id, best_score = None, 0.0
     for league in client.all_leagues():
+        league_sport = str(league.get("strSport") or "")
+        if sport and league_sport and _similar(sport, league_sport) < _SPORT_THRESHOLD:
+            continue
         score = _similar(league_name, str(league.get("strLeague") or ""))
         if score > best_score:
             best_id, best_score = str(league.get("idLeague") or ""), score
@@ -189,7 +202,7 @@ def _match_with_client(
 
     # Step 3: league schedule on each candidate day, fuzzy-matched
     if guess.league:
-        league_id = _find_league_id(client, guess.league)
+        league_id = _find_league_id(client, guess.league, guess.sport)
         if league_id:
             for d in dates:
                 for raw in client.events_on_day(d.isoformat(), league_id):
@@ -246,25 +259,65 @@ def download_artwork(
     return download_urls(event.artwork, dest_dir, config, client=client)
 
 
+def _search_team_badge(client: TheSportsDBClient, team: str, sport: str) -> str | None:
+    """Find one team's badge URL, sport-filtered, with a qualified-name fallback.
+
+    A bare country name (e.g. "Australia") often only resolves to that
+    country's Soccer team on TheSportsDB — national teams for other sports
+    are indexed under a qualified name ("Australia Rugby", "France Rugby").
+    Try the plain name first, then "<team> <sport keyword>" if that yields
+    nothing sport-matching.
+    """
+    queries = [team]
+    if sport:
+        keyword = sport.split()[0]
+        if keyword.lower() not in team.lower():
+            queries.append(f"{team} {keyword}")
+
+    for query in queries:
+        try:
+            candidates = client.search_teams(query)
+        except TheSportsDBError as exc:
+            log.warning("badges: search failed for '%s' (%s)", query, exc)
+            continue
+        best, best_score = None, 0.0
+        for raw in candidates:
+            badge = raw.get("strBadge")
+            if not badge:
+                continue
+            name_score = _similar(team, str(raw.get("strTeam") or ""))
+            if name_score < _TEAM_THRESHOLD:
+                continue
+            team_sport = str(raw.get("strSport") or "")
+            if sport and team_sport and _similar(sport, team_sport) < _SPORT_THRESHOLD:
+                continue  # e.g. reject a Soccer badge when the game is Rugby
+            score = name_score + (1.0 if not sport else _similar(sport, team_sport))
+            if score > best_score:
+                best, best_score = str(badge), score
+        if best:
+            return best
+    return None
+
+
 def team_badges(
-    event: SafeEvent, config: Config, client: TheSportsDBClient | None = None
+    home_team: str,
+    away_team: str,
+    config: Config,
+    sport: str = "",
+    client: TheSportsDBClient | None = None,
 ) -> dict[str, str]:
-    """Badge URLs for the event's teams ({"home": url, "away": url}) when found."""
+    """Badge URLs for two teams ({"home": url, "away": url}) when found, sport-filtered."""
     urls: dict[str, str] = {}
-    if not (event.home_team and event.away_team):
+    if not (home_team and away_team):
         return urls
     own_client = client is None
     if own_client:
         client = TheSportsDBClient(config)
     try:
-        for side, team in (("home", event.home_team), ("away", event.away_team)):
-            for raw in client.search_teams(team):
-                name_ok = _similar(team, str(raw.get("strTeam") or "")) >= _TEAM_THRESHOLD
-                if name_ok and raw.get("strBadge"):
-                    urls[side] = str(raw["strBadge"])
-                    break
-    except TheSportsDBError as exc:
-        log.warning("badges: lookup failed (%s)", exc)
+        for side, team in (("home", home_team), ("away", away_team)):
+            badge = _search_team_badge(client, team, sport)
+            if badge:
+                urls[side] = badge
     finally:
         if own_client:
             client.close()
