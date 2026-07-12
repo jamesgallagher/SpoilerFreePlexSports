@@ -8,7 +8,24 @@ from sfps import identifier, matcher, organizer, retry
 from sfps.config import Config
 from sfps.ledger import FileIdentity, Ledger
 from sfps.models import GameGuess, SafeEvent
-from tests.test_matcher import RAW_EVENT
+
+# Raw API payload including the score fields the firewall strips
+RAW_EVENT = {
+    "idEvent": "2052711",
+    "strEvent": "Texas Super Kings vs Washington Freedom",
+    "strSport": "Cricket",
+    "strLeague": "Major League Cricket",
+    "strSeason": "2026",
+    "strHomeTeam": "Texas Super Kings",
+    "strAwayTeam": "Washington Freedom",
+    "dateEvent": "2026-07-11",
+    "strVenue": "Grand Prairie Stadium",
+    "strThumb": "https://img.example/event/thumb.jpg",
+    "strPoster": "https://img.example/event/poster.jpg",
+    "intHomeScore": "184",
+    "intAwayScore": "180",
+    "strStatus": "Match Finished",
+}
 
 EVENT = SafeEvent(
     event_id="2466440",
