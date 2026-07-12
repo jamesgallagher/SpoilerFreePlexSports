@@ -115,17 +115,25 @@ run and tested standalone via a CLI before the daemon wires them together.
   deployment: Plex never sees the raw file, so there is no race with Plex indexing a
   file we are about to move/rename, and no window where a frame-grab thumb exists.
 
-### 3.2 Identifier (Gemini)
+### 3.2 Identifier (LLM: Groq default, Gemini optional)
 
 Recorded-sports filenames are too messy for regex alone
 (`EPL.Arsenal.v.Chelsea.12.07.26.HDTV.ts`, `NFL RedZone Week 5.ts`,
 `Fox Sports 505 - 2026-07-12 19-30.ts`…). An LLM call is cheap, fast, and handles the
 long tail.
 
+- **Provider:** `LLM_PROVIDER` selects `groq` (default) or `gemini`. Groq is
+  OpenAI-compatible and called via httpx (no extra SDK); Gemini uses the
+  google-genai SDK (installed only with the `gemini` image extra). The wrapper
+  in `llm.py` exposes one `generate_json()` so nothing downstream knows the
+  provider. Groq is the default for speed/stability and generous free daily
+  limits; the identify source label records which provider produced a guess.
 - **Input:** filename, parent folder name(s), file mtime (as a hint for the event
   date), configured timezone.
-- **Model:** configurable via `GEMINI_MODEL` (default a flash-class model);
-  structured-output / JSON mode with a fixed schema.
+- **Model:** `GROQ_MODEL` (default `openai/gpt-oss-120b`, strict JSON schema) or
+  `GEMINI_MODEL`; structured-output / JSON mode with a fixed schema. Groq strict
+  mode requires every property in `required` + `additionalProperties:false`,
+  which `llm.py` derives from the base schema automatically.
 - **Output schema:**
 
 ```json
@@ -322,8 +330,11 @@ services:
 
 | Var | Required | Default | Purpose |
 |---|---|---|---|
-| `GEMINI_API_KEY` | yes | — | Game identification |
-| `GEMINI_MODEL` | no | flash-class default | Model selection |
+| `LLM_PROVIDER` | no | `groq` | `groq` or `gemini` |
+| `GROQ_API_KEY` | yes (groq) | — | Game identification (default provider) |
+| `GROQ_MODEL` | no | `openai/gpt-oss-120b` | Groq model (strict JSON schema) |
+| `GEMINI_API_KEY` | yes (gemini) | — | Only when `LLM_PROVIDER=gemini` |
+| `GEMINI_MODEL` | no | flash-class default | Gemini model selection |
 | `THESPORTSDB_API_KEY` | yes | `123` (dev) | Metadata + artwork |
 | `TZ` | yes | UTC | Date reasoning for overnight games |
 | `MIN_CONFIDENCE` | no | `0.6` | Below ⇒ Unknown Event path |

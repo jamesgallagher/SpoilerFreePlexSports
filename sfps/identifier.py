@@ -1,9 +1,10 @@
 """Identifier stage: filename + timestamp -> GameGuess.
 
 A regex pre-pass extracts recorder timestamps embedded in the filename
-(e.g. `_20260502_224400`); Gemini then does the actual interpretation with
-those hints. Any failure degrades to an unidentified guess — a wrong match
-is worse than the Unknown Event path (see design.md §3.2).
+(e.g. `_20260502_224400`); an LLM (Groq by default, Gemini optional) then does
+the actual interpretation with those hints. Any failure degrades to an
+unidentified guess — a wrong match is worse than the Unknown Event path
+(see design.md §3.2).
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
-from sfps import gemini
+from sfps import llm
 from sfps.config import Config
 from sfps.models import GameGuess
 
@@ -145,7 +146,7 @@ def _parse_response(text: str) -> GameGuess:
         event_date=_clean_date(data.get("event_date")),
         round=str(data.get("round") or ""),
         confidence=max(0.0, min(1.0, float(data.get("confidence", 0.0)))),
-        source="gemini",
+        source="llm",  # overwritten with the provider name by identify_name()
         notes=str(data.get("notes") or ""),
     )
 
@@ -153,20 +154,21 @@ def _parse_response(text: str) -> GameGuess:
 def identify_name(filename: str, mtime: datetime | None, config: Config) -> GameGuess:
     """Identify a game from a filename string (file need not exist)."""
     variant = detect_variant(filename)
+    provider = config.llm_provider
     prompt = _build_prompt(filename, mtime, config)
     log.debug("identify prompt:\n%s", prompt)
     try:
-        text = gemini.generate_json(config, SYSTEM_INSTRUCTION, prompt, RESPONSE_SCHEMA)
-        guess = replace(_parse_response(text), variant=variant)
-    except gemini.GeminiError as exc:
-        log.warning("identify: Gemini call failed (%s) -> unidentified", exc)
+        text = llm.generate_json(config, SYSTEM_INSTRUCTION, prompt, RESPONSE_SCHEMA)
+        guess = replace(_parse_response(text), variant=variant, source=provider)
+    except llm.LLMError as exc:
+        log.warning("identify: LLM call failed (%s) -> unidentified", exc)
         return GameGuess(
-            identified=False, variant=variant, source="gemini", notes=f"gemini error: {exc}"
+            identified=False, variant=variant, source=provider, notes=f"llm error: {exc}"
         )
     except (json.JSONDecodeError, ValueError, TypeError) as exc:
-        log.warning("identify: unparseable Gemini response (%s) -> unidentified", exc)
+        log.warning("identify: unparseable LLM response (%s) -> unidentified", exc)
         return GameGuess(
-            identified=False, variant=variant, source="gemini", notes=f"bad response: {exc}"
+            identified=False, variant=variant, source=provider, notes=f"bad response: {exc}"
         )
 
     log.info(

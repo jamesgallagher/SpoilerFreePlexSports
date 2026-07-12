@@ -29,7 +29,7 @@ from sfps.pipeline import process_file
 
 log = logging.getLogger(__name__)
 
-_SECRET_FIELDS = {"gemini_api_key", "thesportsdb_api_key", "plex_token"}
+_SECRET_FIELDS = {"groq_api_key", "gemini_api_key", "thesportsdb_api_key", "plex_token"}
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -106,8 +106,9 @@ def cmd_config(config: Config) -> int:
 
 
 def cmd_identify(config: Config, filename: str) -> int:
-    if not config.gemini_api_key:
-        log.error("GEMINI_API_KEY is not set")
+    if not config.llm_api_key:
+        key = "GROQ_API_KEY" if config.llm_provider == "groq" else "GEMINI_API_KEY"
+        log.error("%s is not set", key)
         return 1
     path = Path(filename)
     mtime = None

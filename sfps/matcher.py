@@ -28,7 +28,7 @@ log = logging.getLogger(__name__)
 # Similarity thresholds (0-1) for fuzzy verification
 _TEAM_THRESHOLD = 0.7
 _LEAGUE_THRESHOLD = 0.5
-_SPORT_THRESHOLD = 0.4  # e.g. "Rugby Union" vs "Rugby" must pass; vs "Soccer" must not
+# Sport matching is word-based via _sport_matches(), not a fuzzy threshold.
 
 # Which artwork fields cross the firewall, and what we call them
 _ARTWORK_FIELDS = {
@@ -53,6 +53,20 @@ def _similar(a: str, b: str) -> float:
     if na in nb or nb in na:
         return 1.0
     return SequenceMatcher(None, na, nb).ratio()
+
+
+def _sport_matches(a: str, b: str) -> bool:
+    """Whether two sport names refer to the same sport.
+
+    Word-based, not fuzzy: short sport names produce noisy similarity ratios
+    ("Soccer" vs "Cricket" scores 0.46). Sports match when they share a
+    significant word, so "Rugby Union" and "Rugby" match while "Soccer" and
+    "Cricket" do not. Empty on either side means "unknown" -> don't veto.
+    """
+    wa, wb = set(_normalize(a).split()), set(_normalize(b).split())
+    if not wa or not wb:
+        return True
+    return bool(wa & wb)
 
 
 def _parse_date(value: str) -> date | None:
@@ -119,10 +133,14 @@ def _verify(raw: dict, guess: GameGuess, dates: list[date]) -> bool:
     else:
         return False
 
-    if guess.league and raw.get("strLeague") and (
-        _similar(guess.league, str(raw.get("strLeague"))) < _LEAGUE_THRESHOLD
-    ):
-        log.debug("verify: league mismatch '%s' vs '%s'", guess.league, raw.get("strLeague"))
+    # Guard against a same-name, same-date clash in a DIFFERENT SPORT (e.g. a
+    # rugby "Australia vs France" vs a soccer one). Sport is a tiny, reliable
+    # vocabulary both the LLM and TheSportsDB agree on. League name is NOT a
+    # veto: LLMs name the same competition inconsistently ("Nations
+    # Championship" / "International Test" / "World Rugby Nations Championship"),
+    # so a strong teams+date match must not be rejected over it.
+    if not _sport_matches(guess.sport, str(raw.get("strSport") or "")):
+        log.debug("verify: sport mismatch '%s' vs '%s'", guess.sport, raw.get("strSport"))
         return False
     return True
 
@@ -140,7 +158,7 @@ def _find_league_id(client: TheSportsDBClient, league_name: str, sport: str = ""
     best_id, best_score = None, 0.0
     for league in client.all_leagues():
         league_sport = str(league.get("strSport") or "")
-        if sport and league_sport and _similar(sport, league_sport) < _SPORT_THRESHOLD:
+        if not _sport_matches(sport, league_sport):
             continue
         score = _similar(league_name, str(league.get("strLeague") or ""))
         if score > best_score:
@@ -310,7 +328,7 @@ def _search_team_badge(client: TheSportsDBClient, team: str, sport: str) -> str 
             if name_score < _TEAM_THRESHOLD:
                 continue
             team_sport = str(raw.get("strSport") or "")
-            if sport and team_sport and _similar(sport, team_sport) < _SPORT_THRESHOLD:
+            if not _sport_matches(sport, team_sport):
                 continue  # e.g. reject a Soccer badge when the game is Rugby
             score = name_score + (1.0 if not sport else _similar(sport, team_sport))
             if score > best_score:

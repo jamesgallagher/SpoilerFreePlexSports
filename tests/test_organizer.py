@@ -42,7 +42,7 @@ GUESS = GameGuess(
 def config(tmp_path: Path) -> Config:
     return Config.from_env(
         env={
-            "GEMINI_API_KEY": "x",
+            "GROQ_API_KEY": "x",
             "LIBRARY_DIR": str(tmp_path / "library"),
             "CONFIG_DIR": str(tmp_path / "config"),
         }
@@ -188,7 +188,7 @@ def test_organize_collision_errors(config: Config, recording: Path, fake_downloa
 def test_organize_preserve_original(tmp_path: Path, recording: Path, fake_downloads):
     cfg = Config.from_env(
         env={
-            "GEMINI_API_KEY": "x",
+            "GROQ_API_KEY": "x",
             "LIBRARY_DIR": str(tmp_path / "library"),
             "CONFIG_DIR": str(tmp_path / "config"),
             "PRESERVE_ORIGINAL": "true",

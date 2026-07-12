@@ -9,15 +9,20 @@ def test_version(capsys):
     assert capsys.readouterr().out.strip() == __version__
 
 
-def test_config_command_reports_problems(capsys, monkeypatch):
+def _no_llm_keys(monkeypatch):
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+
+def test_config_command_reports_problems(capsys, monkeypatch):
+    _no_llm_keys(monkeypatch)
     assert main(["config"]) == 1
     out = capsys.readouterr().out
-    assert "GEMINI_API_KEY" in out
+    assert "GROQ_API_KEY" in out  # default provider is groq
 
 
 def test_config_command_redacts_secrets(capsys, monkeypatch):
-    monkeypatch.setenv("GEMINI_API_KEY", "super-secret-value")
+    monkeypatch.setenv("GROQ_API_KEY", "super-secret-value")
     assert main(["config"]) == 0
     out = capsys.readouterr().out
     assert "super-secret-value" not in out
@@ -25,7 +30,7 @@ def test_config_command_redacts_secrets(capsys, monkeypatch):
 
 
 def test_process_dry_run(tmp_path: Path, monkeypatch):
-    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
     monkeypatch.setenv("LIBRARY_DIR", str(tmp_path / "library"))
     f = tmp_path / "NFL Week 5 2026-07-12.mkv"
     f.write_bytes(b"\x00" * 64)
@@ -33,25 +38,25 @@ def test_process_dry_run(tmp_path: Path, monkeypatch):
 
 
 def test_process_live_refuses_bad_config(tmp_path: Path, monkeypatch):
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    _no_llm_keys(monkeypatch)
     f = tmp_path / "game.ts"
     f.write_bytes(b"\x00")
     assert main(["process", str(f)]) == 1
 
 
 def test_process_missing_file(monkeypatch):
-    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
     assert main(["process", "C:/does/not/exist.ts", "--dry-run"]) == 2
 
 
 def test_identify_prints_json_guess(capsys, monkeypatch):
     import json as jsonlib
 
-    from sfps import gemini
+    from sfps import llm
 
-    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
     monkeypatch.setattr(
-        gemini,
+        llm,
         "generate_json",
         lambda config, system_instruction, prompt, response_schema: jsonlib.dumps(
             {
@@ -72,13 +77,13 @@ def test_identify_prints_json_guess(capsys, monkeypatch):
 
 
 def test_identify_unidentified_exits_3(monkeypatch, capsys):
-    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
     # conftest offline stub returns identified=False
     assert main(["identify", "mystery recording.ts"]) == 3
 
 
 def test_identify_requires_key(monkeypatch):
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    _no_llm_keys(monkeypatch)
     assert main(["identify", "anything.ts"]) == 1
 
 

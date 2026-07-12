@@ -5,6 +5,8 @@ from sfps.config import Config
 
 def test_defaults():
     cfg = Config.from_env(env={})
+    assert cfg.llm_provider == "groq"
+    assert cfg.groq_model == "openai/gpt-oss-120b"
     assert cfg.thesportsdb_api_key == "123"
     assert cfg.min_confidence == 0.6
     assert cfg.stability_seconds == 120
@@ -16,6 +18,17 @@ def test_defaults():
     assert cfg.library_dir == Path("/library")
 
 
+def test_llm_active_provider_helpers():
+    groq = Config.from_env(env={"GROQ_API_KEY": "g", "GROQ_MODEL": "m"})
+    assert groq.llm_api_key == "g"
+    assert groq.llm_model == "m"
+    gem = Config.from_env(
+        env={"LLM_PROVIDER": "gemini", "GEMINI_API_KEY": "k", "GEMINI_MODEL": "flash"}
+    )
+    assert gem.llm_api_key == "k"
+    assert gem.llm_model == "flash"
+
+
 def test_preserve_original_override():
     cfg = Config.from_env(env={"PRESERVE_ORIGINAL": "true"})
     assert cfg.preserve_original is True
@@ -24,7 +37,7 @@ def test_preserve_original_override():
 def test_plex_library_path():
     cfg = Config.from_env(
         env={
-            "GEMINI_API_KEY": "x",
+            "GROQ_API_KEY": "x",
             "PLEX_URL": "http://plex:32400/",
             "PLEX_TOKEN": "t",
             "PLEX_LIBRARY_PATH": "/data/sports",
@@ -62,22 +75,37 @@ def test_bad_numeric_values_fall_back_to_defaults():
     assert cfg.stability_seconds == 120
 
 
-def test_validate_reports_missing_gemini_key():
+def test_validate_reports_missing_groq_key_by_default():
     cfg = Config.from_env(env={})
     problems = cfg.validate()
-    assert any("GEMINI_API_KEY" in p for p in problems)
+    assert any("GROQ_API_KEY" in p for p in problems)
 
 
-def test_validate_ok_with_keys():
-    cfg = Config.from_env(env={"GEMINI_API_KEY": "abc"})
+def test_validate_reports_missing_gemini_key_when_selected():
+    cfg = Config.from_env(env={"LLM_PROVIDER": "gemini"})
+    assert any("GEMINI_API_KEY" in p for p in cfg.validate())
+
+
+def test_validate_rejects_unknown_provider():
+    cfg = Config.from_env(env={"LLM_PROVIDER": "openai", "GROQ_API_KEY": "x"})
+    assert any("LLM_PROVIDER" in p for p in cfg.validate())
+
+
+def test_validate_ok_with_groq_key():
+    cfg = Config.from_env(env={"GROQ_API_KEY": "abc"})
+    assert cfg.validate() == []
+
+
+def test_validate_ok_with_gemini_provider_and_key():
+    cfg = Config.from_env(env={"LLM_PROVIDER": "gemini", "GEMINI_API_KEY": "abc"})
     assert cfg.validate() == []
 
 
 def test_validate_rejects_bad_artwork_mode():
-    cfg = Config.from_env(env={"GEMINI_API_KEY": "abc", "ARTWORK_MODE": "steal"})
+    cfg = Config.from_env(env={"GROQ_API_KEY": "abc", "ARTWORK_MODE": "steal"})
     assert any("ARTWORK_MODE" in p for p in cfg.validate())
 
 
 def test_validate_requires_plex_url_and_token_together():
-    cfg = Config.from_env(env={"GEMINI_API_KEY": "abc", "PLEX_URL": "http://plex:32400"})
+    cfg = Config.from_env(env={"GROQ_API_KEY": "abc", "PLEX_URL": "http://plex:32400"})
     assert any("PLEX_URL" in p for p in cfg.validate())

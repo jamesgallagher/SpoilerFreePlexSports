@@ -10,7 +10,7 @@ from sfps.pipeline import process_file
 def config(tmp_path: Path) -> Config:
     return Config.from_env(
         env={
-            "GEMINI_API_KEY": "test-key",
+            "GROQ_API_KEY": "test-key",
             "LIBRARY_DIR": str(tmp_path / "library"),
             "WATCH_DIR": str(tmp_path / "watch"),
         }

@@ -15,7 +15,7 @@ def config(tmp_path: Path) -> Config:
     (tmp_path / "watch").mkdir()
     return Config.from_env(
         env={
-            "GEMINI_API_KEY": "x",
+            "GROQ_API_KEY": "x",
             "WATCH_DIR": str(tmp_path / "watch"),
             "LIBRARY_DIR": str(tmp_path / "library"),
             "CONFIG_DIR": str(tmp_path / "config"),
@@ -127,7 +127,7 @@ def test_dry_run_does_not_touch_ledger(config: Config, monkeypatch):
     )
     cfg = Config.from_env(
         env={
-            "GEMINI_API_KEY": "x",
+            "GROQ_API_KEY": "x",
             "WATCH_DIR": str(config.watch_dir),
             "CONFIG_DIR": str(config.config_dir),
             "STABILITY_SECONDS": "0",
@@ -178,7 +178,7 @@ def test_preserved_original_survives_sweep(tmp_path: Path):
     reprocessed (ledger fingerprint), so a sweep finds nothing new."""
     cfg = Config.from_env(
         env={
-            "GEMINI_API_KEY": "x",
+            "GROQ_API_KEY": "x",
             "WATCH_DIR": str(tmp_path / "watch"),
             "LIBRARY_DIR": str(tmp_path / "library"),
             "CONFIG_DIR": str(tmp_path / "config"),

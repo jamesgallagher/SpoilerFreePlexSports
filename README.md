@@ -5,9 +5,10 @@ frame from the video — usually one with the score on it.** This service fixes
 that.
 
 It watches a staging folder for new sports recordings, identifies the game
-(Google Gemini reads the filename, TheSportsDB confirms the event), then moves
-each game into a tidy `League/Season/Game` folder with **spoiler-free artwork
-and metadata** — before Plex ever sees the file.
+(an LLM reads the filename — Groq by default, Gemini optional — and TheSportsDB
+confirms the event), then moves each game into a tidy `League/Season/Game`
+folder with **spoiler-free artwork and metadata** — before Plex ever sees the
+file.
 
 ```
 /watch/EPL Arsenal v Chelsea HL.ts        (recorder drops a file)
@@ -63,7 +64,7 @@ no template needed.
 
    | Config Type | Name | Key | Value | Notes |
    |---|---|---|---|---|
-   | Variable | Gemini API key | `GEMINI_API_KEY` | *your key* | **required** — get one at https://aistudio.google.com/apikey |
+   | Variable | Groq API key | `GROQ_API_KEY` | *your key* | **required** — free key at https://console.groq.com/keys |
    | Variable | TheSportsDB API key | `THESPORTSDB_API_KEY` | `123` | free/dev key; a $9/mo premium key raises rate limits |
    | Variable | Timezone | `TZ` | e.g. `Australia/Sydney` | matters for overnight games crossing a date boundary |
    | Variable | PUID | `PUID` | `99` | unRAID's `nobody` |
@@ -94,7 +95,7 @@ give the exact same result.
 ```bash
 curl -O https://raw.githubusercontent.com/jamesgallagher/SpoilerFreePlexSports/main/docker-compose.yml
 # edit the two volume paths, then:
-GEMINI_API_KEY=your-key docker compose up -d
+GROQ_API_KEY=your-key docker compose up -d
 ```
 
 ## Setting up the Plex library (important!)
@@ -117,8 +118,11 @@ All configuration is via environment variables:
 
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
-| `GEMINI_API_KEY` | **yes** | — | Game identification from filenames |
-| `GEMINI_MODEL` | no | `gemini-flash-latest` | Model selection |
+| `LLM_PROVIDER` | no | `groq` | `groq` or `gemini` — which LLM identifies games |
+| `GROQ_API_KEY` | **yes** (groq) | — | Groq key ([console.groq.com/keys](https://console.groq.com/keys)) |
+| `GROQ_MODEL` | no | `openai/gpt-oss-120b` | Groq model; supports strict JSON schema |
+| `GEMINI_API_KEY` | yes (gemini) | — | Only if `LLM_PROVIDER=gemini` (needs the `gemini` image extra) |
+| `GEMINI_MODEL` | no | `gemini-flash-latest` | Gemini model selection |
 | `THESPORTSDB_API_KEY` | no | `123` (free) | Event metadata + artwork; premium key raises limits |
 | `TZ` | recommended | `UTC` | Date reasoning for overnight games |
 | `PUID` / `PGID` | no | `1000`/`1000` | Ownership of created files (unRAID: 99/100) |

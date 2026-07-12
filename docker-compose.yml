@@ -3,7 +3,11 @@ services:
     image: ghcr.io/jamesgallagher/spoilerfreeplexsports:latest
     container_name: spoilerfreeplexsports
     environment:
-      - GEMINI_API_KEY=${GEMINI_API_KEY:?set GEMINI_API_KEY in .env}
+      - LLM_PROVIDER=${LLM_PROVIDER:-groq}
+      - GROQ_API_KEY=${GROQ_API_KEY:?set GROQ_API_KEY in .env}
+      # - GROQ_MODEL=openai/gpt-oss-120b
+      # for LLM_PROVIDER=gemini instead (needs the gemini image extra):
+      # - GEMINI_API_KEY=${GEMINI_API_KEY}
       - THESPORTSDB_API_KEY=${THESPORTSDB_API_KEY:-123}
       - TZ=${TZ:-UTC}
       - PUID=${PUID:-1000}

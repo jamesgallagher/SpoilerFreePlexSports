@@ -25,7 +25,7 @@ class GameGuess:
     round: str = ""  # e.g. "Matchweek 3", "Week 5", "Game 7"
     confidence: float = 0.0
     variant: str = "full"  # "full" | "highlights" | "mini" (design.md §3.5)
-    source: str = ""  # "regex" | "gemini" | "stub"
+    source: str = ""  # "regex" | "groq" | "gemini" | "review" | "stub"
     notes: str = ""
 
 

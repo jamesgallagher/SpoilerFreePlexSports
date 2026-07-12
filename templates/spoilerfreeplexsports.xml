@@ -9,7 +9,7 @@
   <Support>https://github.com/jamesgallagher/SpoilerFreePlexSports/issues</Support>
   <Project>https://github.com/jamesgallagher/SpoilerFreePlexSports</Project>
   <Overview>
-Spoiler-free sports organizer for Plex. Watches a staging folder for new sports recordings, identifies the game (Gemini + TheSportsDB), then moves each game into a tidy League/Season/Game folder with spoiler-free artwork and metadata - so Plex never shows you a thumbnail with the score on it.
+Spoiler-free sports organizer for Plex. Watches a staging folder for new sports recordings, identifies the game (Groq LLM + TheSportsDB), then moves each game into a tidy League/Season/Game folder with spoiler-free artwork and metadata - so Plex never shows you a thumbnail with the score on it.
 
 Point your recorder's output at the Watch folder, point a Plex TV Shows library at the Library folder, enable Local Media Assets, and disable video preview thumbnails for that library.
   </Overview>
@@ -25,7 +25,9 @@ Point your recorder's output at the Watch folder, point a Plex TV Shows library 
   <Config Name="Library folder" Target="/library" Default="" Mode="rw" Description="Root of your Plex sports library (a TV Shows library in Plex)." Type="Path" Display="always" Required="true" Mask="false"/>
   <Config Name="App data" Target="/config" Default="/mnt/user/appdata/spoilerfreeplexsports" Mode="rw" Description="Ledger database, heartbeat, and your custom badges/unknown-event artwork." Type="Path" Display="always" Required="true" Mask="false"/>
 
-  <Config Name="Gemini API key" Target="GEMINI_API_KEY" Default="" Description="Google Gemini API key, used to identify games from filenames." Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="Groq API key" Target="GROQ_API_KEY" Default="" Description="Groq API key, used to identify games from filenames. Free key at https://console.groq.com/keys" Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="LLM provider" Target="LLM_PROVIDER" Default="groq" Description="Which LLM identifies games: 'groq' (default) or 'gemini'." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Groq model" Target="GROQ_MODEL" Default="openai/gpt-oss-120b" Description="Groq model id. gpt-oss-120b supports strict JSON schema and handles abbreviation expansion well." Type="Variable" Display="advanced" Required="false" Mask="false"/>
   <Config Name="TheSportsDB API key" Target="THESPORTSDB_API_KEY" Default="123" Description="TheSportsDB API key. '123' is the free/dev key; a premium key ($9/mo) raises rate limits and search depth." Type="Variable" Display="always" Required="false" Mask="true"/>
   <Config Name="Timezone" Target="TZ" Default="Australia/Sydney" Description="Recorder timezone - used to reason about overnight games crossing date boundaries." Type="Variable" Display="always" Required="true" Mask="false"/>
   <Config Name="PUID" Target="PUID" Default="99" Description="File owner uid for created files (unRAID default: 99/nobody)." Type="Variable" Display="advanced" Required="false" Mask="false"/>

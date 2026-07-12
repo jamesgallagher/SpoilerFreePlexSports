@@ -3,7 +3,7 @@ from datetime import datetime
 
 import pytest
 
-from sfps import gemini, identifier
+from sfps import identifier, llm
 from sfps.config import Config
 
 # Real recorder output — the Phase 2 fixture set (design.md §5 Phase 2)
@@ -17,7 +17,7 @@ REAL_FILENAMES = [
 
 @pytest.fixture
 def config() -> Config:
-    return Config.from_env(env={"GEMINI_API_KEY": "test-key", "TZ": "Australia/Sydney"})
+    return Config.from_env(env={"GROQ_API_KEY": "test-key", "TZ": "Australia/Sydney"})
 
 
 # --- timestamp pre-pass -----------------------------------------------------
@@ -74,11 +74,11 @@ def test_variant_carried_on_guess(monkeypatch, config: Config):
     assert guess.variant == "highlights"
 
 
-def test_variant_set_even_on_gemini_failure(monkeypatch, config: Config):
+def test_variant_set_even_on_llm_failure(monkeypatch, config: Config):
     def boom(config, system_instruction, prompt, response_schema):
-        raise gemini.GeminiError("down")
+        raise llm.LLMError("down")
 
-    monkeypatch.setattr(gemini, "generate_json", boom)
+    monkeypatch.setattr(llm, "generate_json", boom)
     guess = identifier.identify_name("Mini Match Arsenal v Chelsea.mkv", None, config)
     assert guess.variant == "mini"
     assert not guess.identified
@@ -106,7 +106,7 @@ def _mock_response(monkeypatch, payload):
     def fake_generate_json(config, system_instruction, prompt, response_schema):
         return json.dumps(payload) if isinstance(payload, dict) else payload
 
-    monkeypatch.setattr(gemini, "generate_json", fake_generate_json)
+    monkeypatch.setattr(llm, "generate_json", fake_generate_json)
 
 
 def test_identify_parses_good_response(monkeypatch, config: Config):
@@ -127,7 +127,7 @@ def test_identify_parses_good_response(monkeypatch, config: Config):
     assert guess.identified
     assert guess.league == "World Rugby U20 Championship"
     assert guess.home_team == "South Africa"
-    assert guess.source == "gemini"
+    assert guess.source == "groq"  # provider name from config
 
 
 def test_identify_clamps_confidence(monkeypatch, config: Config):
@@ -158,14 +158,14 @@ def test_identify_handles_garbage_response(monkeypatch, config: Config):
     assert "bad response" in guess.notes
 
 
-def test_identify_handles_gemini_error(monkeypatch, config: Config):
+def test_identify_handles_llm_error(monkeypatch, config: Config):
     def boom(config, system_instruction, prompt, response_schema):
-        raise gemini.GeminiError("simulated outage")
+        raise llm.LLMError("simulated outage")
 
-    monkeypatch.setattr(gemini, "generate_json", boom)
+    monkeypatch.setattr(llm, "generate_json", boom)
     guess = identifier.identify_name("x.ts", None, config)
     assert not guess.identified
-    assert "gemini error" in guess.notes
+    assert "llm error" in guess.notes
 
 
 @pytest.mark.parametrize("filename", REAL_FILENAMES)
@@ -177,10 +177,10 @@ def test_real_filenames_flow_through(monkeypatch, config: Config, filename: str)
         seen["prompt"] = prompt
         return json.dumps({"identified": False, "confidence": 0.0, "notes": "mock"})
 
-    monkeypatch.setattr(gemini, "generate_json", capture)
+    monkeypatch.setattr(llm, "generate_json", capture)
     guess = identifier.identify_name(filename, None, config)
     assert filename in seen["prompt"]
-    assert guess.source == "gemini"
+    assert guess.source == "groq"
 
 
 def test_spoiler_rule_present_in_system_prompt():

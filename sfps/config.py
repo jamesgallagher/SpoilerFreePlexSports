@@ -53,7 +53,10 @@ def _extensions(value: str | None, default: tuple[str, ...]) -> tuple[str, ...]:
 class Config:
     """Runtime configuration. See design.md §4 for the full table."""
 
-    # API credentials
+    # LLM provider for game identification: "groq" | "gemini"
+    llm_provider: str = "groq"
+    groq_api_key: str = ""
+    groq_model: str = "openai/gpt-oss-120b"
     gemini_api_key: str = ""
     gemini_model: str = "gemini-flash-latest"
     thesportsdb_api_key: str = "123"  # free/dev key; premium key recommended
@@ -87,6 +90,9 @@ class Config:
         env = os.environ if env is None else env
         defaults = cls()
         return cls(
+            llm_provider=env.get("LLM_PROVIDER", defaults.llm_provider).strip().lower(),
+            groq_api_key=env.get("GROQ_API_KEY", defaults.groq_api_key),
+            groq_model=env.get("GROQ_MODEL", defaults.groq_model),
             gemini_api_key=env.get("GEMINI_API_KEY", defaults.gemini_api_key),
             gemini_model=env.get("GEMINI_MODEL", defaults.gemini_model),
             thesportsdb_api_key=env.get("THESPORTSDB_API_KEY", defaults.thesportsdb_api_key),
@@ -108,11 +114,26 @@ class Config:
             plex_library_path=env.get("PLEX_LIBRARY_PATH", defaults.plex_library_path),
         )
 
+    @property
+    def llm_api_key(self) -> str:
+        """API key for the active LLM provider."""
+        return self.groq_api_key if self.llm_provider == "groq" else self.gemini_api_key
+
+    @property
+    def llm_model(self) -> str:
+        """Model id for the active LLM provider."""
+        return self.groq_model if self.llm_provider == "groq" else self.gemini_model
+
     def validate(self) -> list[str]:
         """Return a list of configuration problems (empty = all good)."""
         problems: list[str] = []
-        if not self.gemini_api_key:
-            problems.append("GEMINI_API_KEY is not set (required for game identification)")
+        if self.llm_provider not in ("groq", "gemini"):
+            problems.append(
+                f"LLM_PROVIDER must be 'groq' or 'gemini', got '{self.llm_provider}'"
+            )
+        elif not self.llm_api_key:
+            key = "GROQ_API_KEY" if self.llm_provider == "groq" else "GEMINI_API_KEY"
+            problems.append(f"{key} is not set (required for game identification)")
         if not self.thesportsdb_api_key:
             problems.append("THESPORTSDB_API_KEY is not set")
         if self.artwork_mode not in ("download", "generate"):

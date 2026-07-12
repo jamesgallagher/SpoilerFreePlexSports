@@ -2,12 +2,12 @@ import json
 
 import pytest
 
-from sfps import gemini, matcher
+from sfps import llm, matcher
 
 
 @pytest.fixture(autouse=True)
-def _no_real_gemini(monkeypatch):
-    """Safety net: no test may hit the real Gemini API.
+def _no_real_llm(monkeypatch):
+    """Safety net: no test may hit a real LLM API (Groq or Gemini).
 
     Individual tests override this with their own monkeypatch when they need
     a specific canned response.
@@ -18,7 +18,7 @@ def _no_real_gemini(monkeypatch):
             {"identified": False, "confidence": 0.0, "notes": "conftest offline stub"}
         )
 
-    monkeypatch.setattr(gemini, "generate_json", offline_stub)
+    monkeypatch.setattr(llm, "generate_json", offline_stub)
 
 
 @pytest.fixture(autouse=True)

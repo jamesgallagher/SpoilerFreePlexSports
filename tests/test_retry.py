@@ -54,7 +54,7 @@ GUESS = GameGuess(
 def config(tmp_path: Path) -> Config:
     return Config.from_env(
         env={
-            "GEMINI_API_KEY": "x",
+            "GROQ_API_KEY": "x",
             "WATCH_DIR": str(tmp_path / "watch"),
             "LIBRARY_DIR": str(tmp_path / "library"),
             "CONFIG_DIR": str(tmp_path / "config"),
@@ -227,7 +227,7 @@ def test_retry_artwork_skips_complete(config: Config):
 
 def test_retry_artwork_noop_in_generate_mode(tmp_path: Path):
     cfg = Config.from_env(
-        env={"GEMINI_API_KEY": "x", "ARTWORK_MODE": "generate", "LIBRARY_DIR": str(tmp_path)}
+        env={"GROQ_API_KEY": "x", "ARTWORK_MODE": "generate", "LIBRARY_DIR": str(tmp_path)}
     )
     assert retry.retry_artwork(cfg, client=FakeClient()) == {"checked": 0, "updated": 0}
 

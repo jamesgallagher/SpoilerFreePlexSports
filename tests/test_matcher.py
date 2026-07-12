@@ -11,7 +11,7 @@ from sfps.matcher import team_badges as real_team_badges  # bypasses conftest st
 from sfps.models import GameGuess
 from sfps.thesportsdb import TheSportsDBClient
 
-CONFIG = Config.from_env(env={"GEMINI_API_KEY": "x"})
+CONFIG = Config.from_env(env={"GROQ_API_KEY": "x"})
 
 # A raw API event as TheSportsDB returns it — INCLUDING the score fields the
 # firewall must strip.
@@ -122,9 +122,25 @@ def test_verify_rejects_wrong_teams():
     assert not matcher._verify(RAW_EVENT, guess, DATES)
 
 
-def test_verify_rejects_league_mismatch():
-    guess = dataclasses.replace(GUESS, league="Indian Premier League")
+def test_verify_ignores_league_name_mismatch():
+    """League name is NOT a veto: a strong teams+date match must survive an
+    LLM naming the competition differently ('International Test' vs the DB's
+    'Major League Cricket'). Sport still matches, so this is accepted."""
+    guess = dataclasses.replace(GUESS, league="Some Other League Name")
+    assert matcher._verify(RAW_EVENT, guess, DATES)
+
+
+def test_verify_rejects_sport_mismatch():
+    """But a same-name, same-date clash in a DIFFERENT sport is rejected
+    (rugby Australia v France must not match a soccer one)."""
+    guess = dataclasses.replace(GUESS, sport="Soccer")  # RAW_EVENT is Cricket
     assert not matcher._verify(RAW_EVENT, guess, DATES)
+
+
+def test_verify_allows_missing_sport():
+    """If the LLM didn't determine a sport, don't veto on it."""
+    guess = dataclasses.replace(GUESS, sport="")
+    assert matcher._verify(RAW_EVENT, guess, DATES)
 
 
 def test_verify_event_name_for_non_team_sports():
@@ -209,12 +225,14 @@ def test_match_sport_qualified_team_names():
     guess = GameGuess(
         identified=True,
         sport="Rugby Union",
-        league="Nations Championship",
+        # Groq actually returned this DIFFERENT league name for the same
+        # competition; it must not veto the match (only sport does).
+        league="International Test",
         home_team="Australia",
         away_team="France",
-        event_date="2026-07-11",
-        confidence=0.85,
-        source="gemini",
+        event_date="2026-07-12",  # recording start; real event is 2026-07-11 (±1 window)
+        confidence=0.9,
+        source="groq",
     )
     queries = []
 
@@ -231,7 +249,7 @@ def test_match_sport_qualified_team_names():
     with make_client(handler) as client:
         event = matcher.match(guess, CONFIG, client=client)
 
-    assert event is not None
+    assert event is not None, "teams+date+sport match must win despite league-name mismatch"
     assert event.event_id == "2449593"
     assert "Australia_vs_France" in queries  # plain query tried first
     assert "Australia_Rugby_vs_France_Rugby" in queries  # sport-qualified fallback
