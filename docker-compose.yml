@@ -1,0 +1,21 @@
+services:
+  spoilerfreeplexsports:
+    image: ghcr.io/jamesgallagher/spoilerfreeplexsports:latest
+    container_name: spoilerfreeplexsports
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY:?set GEMINI_API_KEY in .env}
+      - THESPORTSDB_API_KEY=${THESPORTSDB_API_KEY:-123}
+      - TZ=${TZ:-UTC}
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      # - STABILITY_SECONDS=120
+      # - ARTWORK_MODE=download        # download | generate
+      # - MIN_CONFIDENCE=0.6
+      # optional: instant Plex partial rescan after organizing
+      # - PLEX_URL=http://plex:32400
+      # - PLEX_TOKEN=${PLEX_TOKEN}
+    volumes:
+      - /path/to/staging:/watch        # where your recorder drops files
+      - /path/to/sports-library:/library   # your Plex sports library root
+      - ./config:/config               # ledger, heartbeat, custom badges/assets
+    restart: unless-stopped

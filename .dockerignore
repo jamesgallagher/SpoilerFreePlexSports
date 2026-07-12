@@ -1,0 +1,17 @@
+.git
+.github
+.venv
+venv
+tests
+.env
+.gitignore
+.gitattributes
+docker-compose.yml
+templates
+assets
+*.md
+!README.md
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache

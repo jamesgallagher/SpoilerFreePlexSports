@@ -193,6 +193,7 @@ def test_daemon_end_to_end(config: Config):
         entries = daemon.ledger.entries(status="unknown")
         assert entries, "daemon did not process the dropped file in time"
         assert not f.exists(), "file should have been moved out of /watch"
+        assert (config.config_dir / "heartbeat").is_file(), "daemon must write a heartbeat"
         target = Path(entries[0]["target"])
         assert (target / "Mystery Sport Final 2026.mkv").is_file()
         assert (target / "Mystery Sport Final 2026.jpg").is_file()

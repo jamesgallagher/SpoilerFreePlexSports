@@ -5,6 +5,7 @@ Commands:
     sfps process <file> [--dry-run]      run one file through the pipeline
     sfps identify <filename>             identify a game from a filename (no file needed)
     sfps match <json> [--download DIR]   match an identifier JSON against TheSportsDB
+    sfps health                          heartbeat freshness check (docker healthcheck)
     sfps config                          show effective configuration + problems
     sfps version                         print version
 """
@@ -61,6 +62,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     sub.add_parser("daemon", help="watch the watch dir and process new recordings forever")
+    sub.add_parser("health", help="exit 0 if the daemon heartbeat is fresh (docker healthcheck)")
 
     sub.add_parser("config", help="show effective configuration and any problems")
     sub.add_parser("version", help="print version and exit")
@@ -130,6 +132,23 @@ def cmd_match(config: Config, guess_arg: str, download_dir: Path | None) -> int:
     return 0
 
 
+def cmd_health(config: Config) -> int:
+    import time
+
+    heartbeat = config.config_dir / "heartbeat"
+    try:
+        age = time.time() - heartbeat.stat().st_mtime
+    except OSError:
+        print("unhealthy: no heartbeat file")
+        return 1
+    limit = max(config.sweep_seconds, 120) * 2
+    if age > limit:
+        print(f"unhealthy: heartbeat is {int(age)}s old (limit {limit}s)")
+        return 1
+    print(f"healthy: heartbeat {int(age)}s old")
+    return 0
+
+
 def cmd_daemon(config: Config) -> int:
     problems = config.validate()
     if problems:
@@ -176,6 +195,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_config(config)
     if args.command == "daemon":
         return cmd_daemon(config)
+    if args.command == "health":
+        return cmd_health(config)
     if args.command == "identify":
         return cmd_identify(config, args.filename)
     if args.command == "match":

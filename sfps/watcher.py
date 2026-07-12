@@ -27,6 +27,8 @@ from sfps.ledger import FileIdentity, Ledger
 
 log = logging.getLogger(__name__)
 
+HEARTBEAT_INTERVAL = 30.0  # seconds between /config/heartbeat touches
+
 
 def wait_for_stable(
     path: Path,
@@ -144,6 +146,15 @@ class Daemon:
 
     # -- lifecycle ---------------------------------------------------------
 
+    def _beat(self) -> None:
+        """Touch /config/heartbeat so `sfps health` (docker HEALTHCHECK) passes."""
+        try:
+            hb = self.config.config_dir / "heartbeat"
+            hb.parent.mkdir(parents=True, exist_ok=True)
+            hb.touch()
+        except OSError as exc:
+            log.warning("watcher: cannot write heartbeat (%s)", exc)
+
     def stop(self, *_args) -> None:
         log.info("watcher: shutdown requested")
         self._stop.set()
@@ -172,9 +183,14 @@ class Daemon:
         if swept:
             log.info("watcher: startup sweep queued %d file(s)", swept)
         last_sweep = time.monotonic()
+        self._beat()
+        last_beat = time.monotonic()
 
         try:
             while not self._stop.is_set():
+                if time.monotonic() - last_beat >= HEARTBEAT_INTERVAL:
+                    self._beat()
+                    last_beat = time.monotonic()
                 try:
                     path = self._queue.get(timeout=1.0)
                 except queue.Empty:

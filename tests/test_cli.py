@@ -80,3 +80,26 @@ def test_identify_unidentified_exits_3(monkeypatch, capsys):
 def test_identify_requires_key(monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     assert main(["identify", "anything.ts"]) == 1
+
+
+def test_health_no_heartbeat(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("CONFIG_DIR", str(tmp_path))
+    assert main(["health"]) == 1
+
+
+def test_health_fresh_heartbeat(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("CONFIG_DIR", str(tmp_path))
+    (tmp_path / "heartbeat").touch()
+    assert main(["health"]) == 0
+
+
+def test_health_stale_heartbeat(tmp_path: Path, monkeypatch):
+    import os
+    import time
+
+    monkeypatch.setenv("CONFIG_DIR", str(tmp_path))
+    hb = tmp_path / "heartbeat"
+    hb.touch()
+    stale = time.time() - 7200  # 2h old, limit is max(300,120)*2 = 600s
+    os.utime(hb, (stale, stale))
+    assert main(["health"]) == 1

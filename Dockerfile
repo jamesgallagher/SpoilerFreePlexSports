@@ -5,19 +5,26 @@ FROM python:3.12-slim
 LABEL org.opencontainers.image.source="https://github.com/jamesgallagher/SpoilerFreePlexSports"
 LABEL org.opencontainers.image.description="Spoiler-free sports organizer for Plex"
 
-# Non-root user; PUID/PGID remapping arrives with the Phase 6 entrypoint.
-RUN groupadd -g 1000 sfps && useradd -u 1000 -g sfps -m sfps
+# gosu: drop root to PUID:PGID in the entrypoint (unRAID file ownership)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gosu \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY sfps/ ./sfps/
 RUN pip install --no-cache-dir .
 
-# Docker volume mount points (see docker-compose in design.md §4)
-RUN mkdir -p /watch /library /config && chown sfps:sfps /watch /library /config
+# Docker volume mount points (see README / design.md §4)
+RUN mkdir -p /watch /library /config
 VOLUME ["/watch", "/library", "/config"]
 
-USER sfps
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
-ENTRYPOINT ["sfps"]
+# Daemon touches /config/heartbeat; sfps health checks its age
+HEALTHCHECK --interval=60s --timeout=10s --start-period=60s --retries=3 \
+    CMD ["sfps", "health"]
+
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["daemon"]
