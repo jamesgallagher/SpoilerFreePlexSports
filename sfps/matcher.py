@@ -165,11 +165,8 @@ def match(
         log.info("match: no event date or file date available to verify against -> unmatched")
         return None
 
-    if guess.home_team and guess.away_team:
-        query = f"{guess.home_team} vs {guess.away_team}"
-    elif guess.event_name:
-        query = guess.event_name
-    else:
+    queries = _build_queries(guess)
+    if not queries:
         log.info("match: guess has neither teams nor event name -> unmatched")
         return None
 
@@ -177,7 +174,7 @@ def match(
     if own_client:
         client = TheSportsDBClient(config)
     try:
-        return _match_with_client(client, query, guess, dates)
+        return _match_with_client(client, queries, guess, dates)
     except TheSportsDBError as exc:
         log.warning("match: TheSportsDB unavailable (%s) -> unmatched", exc)
         return None
@@ -186,19 +183,43 @@ def match(
             client.close()
 
 
+def _build_queries(guess: GameGuess) -> list[str]:
+    """Search-event query variants, most likely first.
+
+    TheSportsDB names its event and its teams the same way, and national
+    teams for non-soccer sports are sport-qualified: the Australia rugby
+    side is "Australia Rugby", so the event is "Australia Rugby vs France
+    Rugby" and a bare "Australia vs France" query returns nothing. When the
+    identified team names omit the sport keyword, add a sport-qualified
+    variant so those events are still found.
+    """
+    if guess.home_team and guess.away_team:
+        home, away = guess.home_team, guess.away_team
+        queries = [f"{home} vs {away}"]
+        keyword = guess.sport.split()[0] if guess.sport else ""
+        if keyword and keyword.lower() not in home.lower() and keyword.lower() not in away.lower():
+            queries.append(f"{home} {keyword} vs {away} {keyword}")
+        return queries
+    if guess.event_name:
+        return [guess.event_name]
+    return []
+
+
 def _match_with_client(
-    client: TheSportsDBClient, query: str, guess: GameGuess, dates: list[date]
+    client: TheSportsDBClient, queries: list[str], guess: GameGuess, dates: list[date]
 ) -> SafeEvent | None:
-    # Step 1: participants + explicit date (exact, then ±1)
+    # Step 1: participants + explicit date (exact, then ±1), each query variant
     for d in dates:
-        for raw in client.search_events(query, date=d.isoformat()):
-            if _verify(raw, guess, dates):
-                return _accept(raw, "search+date")
+        for query in queries:
+            for raw in client.search_events(query, date=d.isoformat()):
+                if _verify(raw, guess, dates):
+                    return _accept(raw, "search+date")
 
     # Step 2: participants only, verified against the window
-    for raw in client.search_events(query):
-        if _verify(raw, guess, dates):
-            return _accept(raw, "search")
+    for query in queries:
+        for raw in client.search_events(query):
+            if _verify(raw, guess, dates):
+                return _accept(raw, "search")
 
     # Step 3: league schedule on each candidate day, fuzzy-matched
     if guess.league:
@@ -209,7 +230,7 @@ def _match_with_client(
                     if _verify(raw, guess, dates):
                         return _accept(raw, "eventsday")
 
-    log.info("match: no verified event found for '%s' -> unmatched", query)
+    log.info("match: no verified event found for %s -> unmatched", " / ".join(queries))
     return None
 
 

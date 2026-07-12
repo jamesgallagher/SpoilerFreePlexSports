@@ -159,6 +159,84 @@ def test_match_via_search_with_date():
     assert "Texas_Super_Kings_vs_Washington_Freedom" in calls[0]
 
 
+def test_build_queries_adds_sport_qualified_variant():
+    guess = GameGuess(
+        identified=True, sport="Rugby Union", home_team="Australia", away_team="France"
+    )
+    assert matcher._build_queries(guess) == [
+        "Australia vs France",
+        "Australia Rugby vs France Rugby",
+    ]
+
+
+def test_build_queries_no_variant_when_sport_already_present():
+    guess = GameGuess(
+        identified=True,
+        sport="Cricket",
+        home_team="Texas Super Kings",
+        away_team="Washington Freedom",
+    )
+    # sport keyword not in club names, so a variant IS added for cricket clubs
+    assert len(matcher._build_queries(guess)) == 2
+
+    guess2 = GameGuess(
+        identified=True, sport="Rugby", home_team="Australia Rugby", away_team="France Rugby"
+    )
+    # keyword already in both names -> no redundant variant
+    assert matcher._build_queries(guess2) == ["Australia Rugby vs France Rugby"]
+
+
+def test_build_queries_event_name_only():
+    guess = GameGuess(identified=True, event_name="Miami Grand Prix", sport="Motorsport")
+    assert matcher._build_queries(guess) == ["Miami Grand Prix"]
+
+
+def test_match_sport_qualified_team_names():
+    """Reproduces event 2449593: Gemini identifies 'Australia' vs 'France'
+    (Rugby Union) but TheSportsDB names the teams 'Australia Rugby' /
+    'France Rugby' and the event 'Australia Rugby vs France Rugby'. A bare
+    'Australia vs France' query returns nothing; the sport-qualified variant
+    must be tried and must find + verify the event."""
+    rugby_event = {
+        "idEvent": "2449593",
+        "strEvent": "Australia Rugby vs France Rugby",
+        "strSport": "Rugby",
+        "strLeague": "Nations Championship",
+        "strHomeTeam": "Australia Rugby",
+        "strAwayTeam": "France Rugby",
+        "dateEvent": "2026-07-11",
+    }
+    guess = GameGuess(
+        identified=True,
+        sport="Rugby Union",
+        league="Nations Championship",
+        home_team="Australia",
+        away_team="France",
+        event_date="2026-07-11",
+        confidence=0.85,
+        source="gemini",
+    )
+    queries = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "searchevents.php" in request.url.path:
+            q = parse_qs(urlparse(str(request.url)).query)["e"][0]
+            queries.append(q)
+            # only the sport-qualified event name exists on TheSportsDB
+            if q == "Australia_Rugby_vs_France_Rugby":
+                return events_response(rugby_event)
+            return events_response()
+        return events_response()
+
+    with make_client(handler) as client:
+        event = matcher.match(guess, CONFIG, client=client)
+
+    assert event is not None
+    assert event.event_id == "2449593"
+    assert "Australia_vs_France" in queries  # plain query tried first
+    assert "Australia_Rugby_vs_France_Rugby" in queries  # sport-qualified fallback
+
+
 def test_match_falls_back_to_dateless_search():
     def handler(request: httpx.Request) -> httpx.Response:
         params = parse_qs(urlparse(str(request.url)).query)
