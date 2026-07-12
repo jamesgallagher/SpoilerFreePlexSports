@@ -7,7 +7,7 @@ import pytest
 from sfps import pipeline
 from sfps.config import Config
 from sfps.models import OrganizeResult
-from sfps.watcher import Daemon, wait_for_stable
+from sfps.watcher import Daemon, is_hidden, wait_for_stable
 
 
 @pytest.fixture
@@ -145,6 +145,58 @@ def test_enqueue_filters_extensions(config: Config):
     daemon.enqueue(config.watch_dir / "notes.txt")
     daemon.enqueue(config.watch_dir / "game.mkv")
     assert daemon._queue.qsize() == 1
+
+
+def test_is_hidden_rules(config: Config):
+    root = config.watch_dir
+    assert is_hidden(root / ".hidden.mkv", root)
+    assert is_hidden(root / "._appledouble.mkv", root)
+    assert is_hidden(root / ".partial" / "game.mkv", root)
+    assert is_hidden(root / "@eaDir" / "game.mkv", root)
+    assert not is_hidden(root / "sub" / "game.mkv", root)
+
+
+def test_enqueue_ignores_hidden(config: Config):
+    daemon = Daemon(config)
+    daemon.enqueue(config.watch_dir / ".hidden recording.mkv")
+    daemon.enqueue(config.watch_dir / "@eaDir" / "thumb.mkv")
+    daemon.enqueue(config.watch_dir / "visible.mkv")
+    assert daemon._queue.qsize() == 1
+
+
+def test_sweep_skips_hidden(config: Config):
+    daemon = Daemon(config)
+    (config.watch_dir / ".stash").mkdir()
+    drop_file(config, ".stash/secret.mkv")
+    drop_file(config, ".dotfile.ts")
+    drop_file(config, "normal.mkv")
+    assert daemon.sweep() == 1
+
+
+def test_preserved_original_survives_sweep(tmp_path: Path):
+    """PRESERVE_ORIGINAL=true: the original stays in /watch and is never
+    reprocessed (ledger fingerprint), so a sweep finds nothing new."""
+    cfg = Config.from_env(
+        env={
+            "GEMINI_API_KEY": "x",
+            "WATCH_DIR": str(tmp_path / "watch"),
+            "LIBRARY_DIR": str(tmp_path / "library"),
+            "CONFIG_DIR": str(tmp_path / "config"),
+            "STABILITY_SECONDS": "0",
+            "PRESERVE_ORIGINAL": "true",
+        }
+    )
+    (tmp_path / "watch").mkdir()
+    daemon = Daemon(cfg)
+    f = tmp_path / "watch" / "Keep Me Around 2026.mkv"
+    f.write_bytes(b"\x00" * 512)
+
+    # conftest Gemini stub -> unknown flow, but with a real copy-organize
+    assert daemon.process_path(f) == "unknown"
+    assert f.exists(), "original must be preserved"
+    copied = cfg.library_dir / "Unknown Events" / "Keep Me Around 2026" / f.name
+    assert copied.is_file()
+    assert daemon.sweep() == 0, "preserved original must not be reprocessed"
 
 
 def test_sweep_finds_preexisting_files(config: Config):

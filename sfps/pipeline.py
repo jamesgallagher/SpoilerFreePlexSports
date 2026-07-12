@@ -8,7 +8,7 @@ from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
-from sfps import identifier, matcher, organizer
+from sfps import identifier, matcher, organizer, plex
 from sfps.config import Config
 from sfps.models import GameGuess, OrganizeResult
 
@@ -51,6 +51,10 @@ def process_file(path: Path, config: Config, dry_run: bool = False) -> OrganizeR
 
     log.info("[3/3] organize")
     result = organizer.organize(path, guess, event, config, dry_run=dry_run)
+
+    if not dry_run and result.status in ("organized", "unknown") and plex.enabled(config):
+        log.info("[+] plex partial rescan")
+        plex.rescan(config, Path(result.target_dir))
 
     log.info("=== done: %s -> %s ===", result.status, result.target_dir)
     return result

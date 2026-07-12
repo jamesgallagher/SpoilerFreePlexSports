@@ -8,11 +8,31 @@ def test_defaults():
     assert cfg.thesportsdb_api_key == "123"
     assert cfg.min_confidence == 0.6
     assert cfg.stability_seconds == 120
-    assert cfg.media_extensions == (".ts", ".mkv", ".mp4")
+    assert cfg.media_extensions == (".mp4", ".mkv", ".avi", ".mov", ".mpeg", ".ts")
     assert cfg.artwork_mode == "download"
+    assert cfg.preserve_original is False
     assert cfg.dry_run is False
     assert cfg.watch_dir == Path("/watch")
     assert cfg.library_dir == Path("/library")
+
+
+def test_preserve_original_override():
+    cfg = Config.from_env(env={"PRESERVE_ORIGINAL": "true"})
+    assert cfg.preserve_original is True
+
+
+def test_plex_library_path():
+    cfg = Config.from_env(
+        env={
+            "GEMINI_API_KEY": "x",
+            "PLEX_URL": "http://plex:32400/",
+            "PLEX_TOKEN": "t",
+            "PLEX_LIBRARY_PATH": "/data/sports",
+        }
+    )
+    assert cfg.plex_url == "http://plex:32400"  # trailing slash stripped
+    assert cfg.plex_library_path == "/data/sports"
+    assert cfg.validate() == []
 
 
 def test_env_overrides():

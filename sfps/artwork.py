@@ -52,6 +52,31 @@ def generate_card(dest: Path, title: str, subtitle: str = "", footer: str = "") 
     return dest
 
 
+def generate_matchup_card(
+    dest: Path,
+    home_badge: Path,
+    away_badge: Path,
+    subtitle: str = "",
+    footer: str = "",
+) -> Path:
+    """Badge-vs-badge card for matched games with no downloadable event art."""
+    image = Image.new("RGB", CARD_SIZE, _BG)
+    for badge_path, cx in ((home_badge, 340), (away_badge, 940)):
+        badge = Image.open(badge_path).convert("RGBA")
+        badge.thumbnail((360, 360))
+        image.paste(badge, (int(cx - badge.width / 2), int(300 - badge.height / 2)), badge)
+    draw = ImageDraw.Draw(image)
+    _center_text(draw, 272, "v", 56, _ACCENT)
+    if subtitle:
+        _center_text(draw, 528, subtitle[:80], 40, _FG)
+    if footer:
+        _center_text(draw, 620, footer[:80], 28, _ACCENT)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    image.save(dest, "JPEG", quality=90)
+    log.info("artwork: generated badge matchup card -> %s", dest.name)
+    return dest
+
+
 def _generated_badge(label: str, width: int) -> Image.Image:
     """A text pill: rounded dark box with white label, sized relative to thumb."""
     height = max(28, int(width * 0.30))

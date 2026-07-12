@@ -5,6 +5,8 @@ Commands:
     sfps process <file> [--dry-run]      run one file through the pipeline
     sfps identify <filename>             identify a game from a filename (no file needed)
     sfps match <json> [--download DIR]   match an identifier JSON against TheSportsDB
+    sfps retry                           re-attempt unknowns + upgrade missing artwork
+    sfps review [--set-event ID PATH]    list unmatched recordings / force a match
     sfps health                          heartbeat freshness check (docker healthcheck)
     sfps config                          show effective configuration + problems
     sfps version                         print version
@@ -63,6 +65,21 @@ def _build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("daemon", help="watch the watch dir and process new recordings forever")
     sub.add_parser("health", help="exit 0 if the daemon heartbeat is fresh (docker healthcheck)")
+
+    sub.add_parser("retry", help="re-attempt unknown matches and upgrade missing artwork")
+
+    p_review = sub.add_parser("review", help="list unmatched recordings, or force a match")
+    p_review.add_argument(
+        "--set-event",
+        metavar="EVENT_ID",
+        help="TheSportsDB event id to force-match the given path to",
+    )
+    p_review.add_argument(
+        "path",
+        nargs="?",
+        type=Path,
+        help="game folder or media file (required with --set-event)",
+    )
 
     sub.add_parser("config", help="show effective configuration and any problems")
     sub.add_parser("version", help="print version and exit")
@@ -132,6 +149,43 @@ def cmd_match(config: Config, guess_arg: str, download_dir: Path | None) -> int:
     return 0
 
 
+def cmd_retry(config: Config) -> int:
+    from sfps.retry import retry_artwork, retry_unknowns
+
+    unknowns = retry_unknowns(config)
+    art = retry_artwork(config)
+    print(
+        f"unknowns: {unknowns['eligible']} eligible, {unknowns['matched']} matched\n"
+        f"artwork:  {art['checked']} checked, {art['updated']} updated"
+    )
+    return 0
+
+
+def cmd_review(config: Config, event_id: str | None, path: Path | None) -> int:
+    from sfps.ledger import Ledger
+    from sfps.retry import force_match
+
+    if event_id:
+        if path is None:
+            log.error("review --set-event needs the game folder or media file path")
+            return 2
+        result = force_match(path, event_id, config)
+        if result is None or result.status != "organized":
+            return 1
+        print(f"organized -> {result.target_dir}")
+        return 0
+
+    entries = Ledger(config.config_dir / "ledger.db").entries(status="unknown")
+    if not entries:
+        print("no unmatched recordings")
+        return 0
+    for entry in entries:
+        print(f"{entry['processed_at']}  {Path(entry['path']).name}\n    -> {entry['target']}")
+    print(f"\n{len(entries)} unmatched. Force one with:")
+    print('  sfps review --set-event <ID> "<target dir>"')
+    return 0
+
+
 def cmd_health(config: Config) -> int:
     import time
 
@@ -197,6 +251,10 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_daemon(config)
     if args.command == "health":
         return cmd_health(config)
+    if args.command == "retry":
+        return cmd_retry(config)
+    if args.command == "review":
+        return cmd_review(config, args.set_event, args.path)
     if args.command == "identify":
         return cmd_identify(config, args.filename)
     if args.command == "match":

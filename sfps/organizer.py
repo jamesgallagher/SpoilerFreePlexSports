@@ -64,20 +64,24 @@ def build_names(event: SafeEvent, variant: str, extension: str) -> tuple[Path, s
     return game_dir, episode
 
 
-def _move_file(src: Path, dest: Path) -> None:
-    """Atomic rename, falling back to copy + size-verify + delete across devices."""
-    try:
-        src.rename(dest)
-        return
-    except OSError:
-        pass
-    log.info("organize: cross-device move, copying %s", src.name)
+def _move_file(src: Path, dest: Path, preserve: bool = False) -> None:
+    """Atomic rename (or copy when preserving the original), verified on copy."""
+    if not preserve:
+        try:
+            src.rename(dest)
+            return
+        except OSError:
+            pass
+        log.info("organize: cross-device move, copying %s", src.name)
     size = src.stat().st_size
     shutil.copy2(src, dest)
     if dest.stat().st_size != size:
         dest.unlink(missing_ok=True)
         raise OSError(f"copy verification failed for {src} -> {dest}")
-    src.unlink()
+    if preserve:
+        log.info("organize: original preserved at %s", src)
+    else:
+        src.unlink()
 
 
 def _write_sidecar(
@@ -129,6 +133,49 @@ def _write_sidecar(
     return sidecar
 
 
+# artwork kind -> (sidecar status key, filename; None = named after the episode)
+ART_PLACEMENT = {
+    "thumb": ("thumb", None),
+    "poster": ("poster", "poster.jpg"),
+    "fanart": ("background", "background.jpg"),
+}
+
+
+def place_downloaded(kind: str, src: Path, target_dir: Path, episode_stem: str) -> Path | None:
+    """Move a downloaded artwork file to its Local Media Assets name."""
+    placement = ART_PLACEMENT.get(kind)
+    if placement is None:
+        return None
+    _, filename = placement
+    dest = target_dir / (filename or f"{episode_stem}.jpg")
+    shutil.move(src, dest)
+    return dest
+
+
+def generate_thumb(event: SafeEvent, thumb_path: Path, config: Config) -> str:
+    """Generate a spoiler-free thumb: badge matchup card, else neutral text card."""
+    urls = matcher.team_badges(event, config)
+    if len(urls) == 2:
+        with tempfile.TemporaryDirectory(dir=thumb_path.parent) as tmp:
+            badges = matcher.download_urls(urls, Path(tmp), config)
+            if len(badges) == 2:
+                try:
+                    artwork.generate_matchup_card(
+                        thumb_path,
+                        badges["home"],
+                        badges["away"],
+                        subtitle=_matchup(event),
+                        footer=f"{event.league}  ·  {event.event_date}".strip(" ·"),
+                    )
+                    return "generated-badges"
+                except OSError as exc:
+                    log.warning("artwork: badge card failed (%s); using text card", exc)
+    artwork.generate_card(
+        thumb_path, _matchup(event), subtitle=event.league, footer=event.event_date
+    )
+    return "generated"
+
+
 def _place_artwork(
     event: SafeEvent, guess: GameGuess, target_dir: Path, episode_stem: str, config: Config
 ) -> dict[str, str]:
@@ -136,30 +183,15 @@ def _place_artwork(
     status = {"thumb": "none", "poster": "none", "background": "none"}
     thumb_path = target_dir / f"{episode_stem}.jpg"
 
-    with tempfile.TemporaryDirectory(dir=target_dir) as tmp:
-        downloaded = (
-            matcher.download_artwork(event, Path(tmp), config)
-            if config.artwork_mode == "download"
-            else {}
-        )
-        if "thumb" in downloaded:
-            shutil.move(downloaded["thumb"], thumb_path)
-            status["thumb"] = "downloaded"
-        if "poster" in downloaded:
-            shutil.move(downloaded["poster"], target_dir / "poster.jpg")
-            status["poster"] = "downloaded"
-        if "fanart" in downloaded:
-            shutil.move(downloaded["fanart"], target_dir / "background.jpg")
-            status["background"] = "downloaded"
+    if config.artwork_mode == "download" and event.artwork:
+        with tempfile.TemporaryDirectory(dir=target_dir) as tmp:
+            downloaded = matcher.download_artwork(event, Path(tmp), config)
+            for kind, src in downloaded.items():
+                if place_downloaded(kind, src, target_dir, episode_stem) is not None:
+                    status[ART_PLACEMENT[kind][0]] = "downloaded"
 
     if status["thumb"] == "none":
-        artwork.generate_card(
-            thumb_path,
-            _matchup(event),
-            subtitle=event.league,
-            footer=event.event_date,
-        )
-        status["thumb"] = "generated"
+        status["thumb"] = generate_thumb(event, thumb_path, config)
 
     if guess.variant in artwork.BADGE_LABELS and artwork.apply_badge(
         thumb_path, guess.variant, config
@@ -244,7 +276,7 @@ def organize(
         status = "organized"
 
     sidecar = _write_sidecar(target_dir, path.name, guess, event, art_status)
-    _move_file(path, media_target)
+    _move_file(path, media_target, preserve=config.preserve_original)
     log.info("organize: %s -> %s (artwork: %s)", status, target_dir, art_status)
 
     return OrganizeResult(

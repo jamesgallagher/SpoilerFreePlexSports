@@ -81,10 +81,13 @@ All configuration is via environment variables:
 | `PUID` / `PGID` | no | `1000`/`1000` | Ownership of created files (unRAID: 99/100) |
 | `STABILITY_SECONDS` | no | `120` | File is processed once its size is unchanged this long |
 | `SWEEP_SECONDS` | no | `300` | Periodic watch-folder re-scan (safety net) |
-| `MEDIA_EXTENSIONS` | no | `.ts,.mkv,.mp4` | Files to process |
-| `ARTWORK_MODE` | no | `download` | `generate` = always create neutral cards locally |
+| `MEDIA_EXTENSIONS` | no | `.mp4,.mkv,.avi,.mov,.mpeg,.ts` | Files to process; everything else (and hidden files) is ignored |
+| `PRESERVE_ORIGINAL` | no | `false` | `true` = copy into the library, leave the original in `/watch` |
+| `ARTWORK_MODE` | no | `download` | `generate` = always build badge/neutral cards locally |
 | `MIN_CONFIDENCE` | no | `0.6` | Below this, files take the safe Unknown Event path |
+| `RETRY_DAYS` | no | `7` | How long unknowns/missing artwork are retried (every 6h) |
 | `PLEX_URL` / `PLEX_TOKEN` | no | — | Optional: instant partial scan after organizing |
+| `PLEX_LIBRARY_PATH` | no | — | Plex's path to the library, if mounted differently than `/library` |
 | `DRY_RUN` | no | `false` | Log planned actions without touching anything |
 | `LOG_LEVEL` | no | `INFO` | `DEBUG` may include raw API payloads (contain scores) |
 
@@ -112,6 +115,9 @@ one-off (handy for testing a filename before committing to a recording rule):
 ```bash
 docker exec spoilerfreeplexsports sfps identify "JWC South Africa v Wales.mkv"
 docker exec spoilerfreeplexsports sfps process "/watch/some file.ts" --dry-run
+docker exec spoilerfreeplexsports sfps review     # list unmatched recordings
+docker exec spoilerfreeplexsports sfps review --set-event 2466440 "/library/Unknown Events/some game"
+docker exec spoilerfreeplexsports sfps retry      # re-attempt unknowns + missing artwork now
 docker exec spoilerfreeplexsports sfps config     # effective config + problems
 docker exec spoilerfreeplexsports sfps health     # heartbeat check
 ```
@@ -125,6 +131,14 @@ docker exec spoilerfreeplexsports sfps health     # heartbeat check
 - The processed-file ledger (`/config/ledger.db`) means restarts and
   re-scans never double-process; a re-recorded file (different size) is
   picked up as new work.
+- TheSportsDB is crowd-sourced and often gains events/artwork days after a
+  game airs: a retry pass runs every 6 hours (for `RETRY_DAYS`) that
+  re-attempts Unknown Events and upgrades generated thumbs to real event
+  artwork. `sfps review --set-event <id> <dir>` lets you force a match by
+  hand for anything left over.
+- Matched games with no downloadable event art get a **generated
+  badge-vs-badge card** built from the teams' real badges (with a neutral
+  text card as the last resort).
 
 ## Development
 

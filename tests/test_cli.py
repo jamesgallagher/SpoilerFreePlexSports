@@ -93,6 +93,40 @@ def test_health_fresh_heartbeat(tmp_path: Path, monkeypatch):
     assert main(["health"]) == 0
 
 
+def test_retry_command(monkeypatch, capsys, tmp_path: Path):
+    from sfps import retry
+
+    monkeypatch.setenv("CONFIG_DIR", str(tmp_path))
+    monkeypatch.setattr(retry, "retry_unknowns", lambda cfg: {"eligible": 2, "matched": 1})
+    monkeypatch.setattr(
+        retry, "retry_artwork", lambda cfg, client=None: {"checked": 3, "updated": 2}
+    )
+    assert main(["retry"]) == 0
+    out = capsys.readouterr().out
+    assert "2 eligible, 1 matched" in out
+    assert "3 checked, 2 updated" in out
+
+
+def test_review_lists_unknowns(monkeypatch, capsys, tmp_path: Path):
+    from sfps.ledger import FileIdentity, Ledger
+
+    monkeypatch.setenv("CONFIG_DIR", str(tmp_path))
+    f = tmp_path / "weird game.ts"
+    f.write_bytes(b"x")
+    Ledger(tmp_path / "ledger.db").record(
+        FileIdentity.of(f), "unknown", target="/library/Unknown Events/weird game"
+    )
+    assert main(["review"]) == 0
+    out = capsys.readouterr().out
+    assert "weird game.ts" in out
+    assert "--set-event" in out
+
+
+def test_review_set_event_requires_path(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("CONFIG_DIR", str(tmp_path))
+    assert main(["review", "--set-event", "123"]) == 2
+
+
 def test_health_stale_heartbeat(tmp_path: Path, monkeypatch):
     import os
     import time

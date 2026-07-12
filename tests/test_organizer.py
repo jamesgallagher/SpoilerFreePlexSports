@@ -185,6 +185,54 @@ def test_organize_collision_errors(config: Config, recording: Path, fake_downloa
     assert again.exists()  # source untouched on error
 
 
+def test_organize_preserve_original(tmp_path: Path, recording: Path, fake_downloads):
+    cfg = Config.from_env(
+        env={
+            "GEMINI_API_KEY": "x",
+            "LIBRARY_DIR": str(tmp_path / "library"),
+            "CONFIG_DIR": str(tmp_path / "config"),
+            "PRESERVE_ORIGINAL": "true",
+        }
+    )
+    result = organizer.organize(recording, GUESS, EVENT, cfg, dry_run=False)
+    assert result.status == "organized"
+    assert recording.exists(), "original must remain in place"
+    assert Path(result.media_file).is_file()
+    assert Path(result.media_file).stat().st_size == recording.stat().st_size
+
+
+def test_generated_badge_matchup_card(config: Config, recording: Path, monkeypatch):
+    """No downloadable event art + badges available -> badge-vs-badge card."""
+    from PIL import Image as PILImage
+
+    monkeypatch.setattr(
+        matcher, "download_artwork", lambda event, dest, cfg, client=None: {}
+    )
+    monkeypatch.setattr(
+        matcher,
+        "team_badges",
+        lambda event, cfg, client=None: {"home": "http://x/h.png", "away": "http://x/a.png"},
+    )
+
+    def fake_badge_downloads(urls, dest_dir, cfg, client=None):
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        out = {}
+        for kind, color in (("home", (200, 180, 20)), ("away", (180, 20, 20))):
+            p = dest_dir / f"{kind}.png"
+            PILImage.new("RGBA", (200, 200), color).save(p, "PNG")
+            out[kind] = p
+        return out
+
+    monkeypatch.setattr(matcher, "download_urls", fake_badge_downloads)
+
+    result = organizer.organize(recording, GUESS, EVENT, config, dry_run=False)
+    target = Path(result.target_dir)
+    sidecar = json.loads((target / "game.json").read_text(encoding="utf-8"))
+    assert sidecar["artwork"]["thumb"] == "generated-badges"
+    thumbs = [p for p in target.glob("*.jpg") if p.name not in ("poster.jpg", "background.jpg")]
+    assert PILImage.open(thumbs[0]).size == (1280, 720)
+
+
 # --- organize: unknown ----------------------------------------------------------
 
 

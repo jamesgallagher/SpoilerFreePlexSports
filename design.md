@@ -333,6 +333,7 @@ services:
 | `ARTWORK_MODE` | no | `download` | `generate` = never use downloaded event art |
 | `RETRY_DAYS` | no | `7` | Re-attempt unknowns/missing art |
 | `PLEX_URL` / `PLEX_TOKEN` | no | — | Enables optional partial rescan |
+| `PLEX_LIBRARY_PATH` | no | — | Plex-side path of the library when mounted differently |
 | `PUID` / `PGID` | no | `1000` | File ownership |
 | `DRY_RUN` | no | `false` | Log actions without moving/writing |
 | `LOG_LEVEL` | no | `INFO` | DEBUG may include raw API payloads |

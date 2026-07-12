@@ -28,6 +28,18 @@ from sfps.ledger import FileIdentity, Ledger
 log = logging.getLogger(__name__)
 
 HEARTBEAT_INTERVAL = 30.0  # seconds between /config/heartbeat touches
+RETRY_PASS_INTERVAL = 6 * 3600.0  # seconds between retry passes (design.md §3.6)
+
+_JUNK_DIRS = {"@eaDir"}  # NAS metadata directories
+
+
+def is_hidden(path: Path, root: Path) -> bool:
+    """True if any component under root is dot-prefixed or a known junk dir."""
+    try:
+        parts = path.relative_to(root).parts
+    except ValueError:
+        parts = (path.name,)
+    return any(part.startswith(".") or part in _JUNK_DIRS for part in parts)
 
 
 def wait_for_stable(
@@ -91,6 +103,9 @@ class Daemon:
     def enqueue(self, path: Path) -> None:
         if path.suffix.lower() not in self.config.media_extensions:
             return
+        if is_hidden(path, self.config.watch_dir):
+            log.debug("watcher: ignoring hidden %s", path)
+            return
         with self._pending_lock:
             if path in self._pending:
                 return
@@ -106,6 +121,8 @@ class Daemon:
             return 0
         for path in sorted(self.config.watch_dir.rglob("*")):
             if not path.is_file() or path.suffix.lower() not in self.config.media_extensions:
+                continue
+            if is_hidden(path, self.config.watch_dir):
                 continue
             if self.ledger.is_processed(path):
                 continue
@@ -143,6 +160,16 @@ class Daemon:
         finally:
             with self._pending_lock:
                 self._pending.discard(path)
+
+    def _retry_pass(self) -> None:
+        """Periodic re-attempt of unknowns and missing artwork (design.md §3.6)."""
+        from sfps import retry
+
+        try:
+            retry.retry_unknowns(self.config)
+            retry.retry_artwork(self.config)
+        except Exception:  # noqa: BLE001 - the retry pass must never kill the daemon
+            log.exception("watcher: retry pass failed")
 
     # -- lifecycle ---------------------------------------------------------
 
@@ -183,6 +210,7 @@ class Daemon:
         if swept:
             log.info("watcher: startup sweep queued %d file(s)", swept)
         last_sweep = time.monotonic()
+        last_retry = time.monotonic()
         self._beat()
         last_beat = time.monotonic()
 
@@ -197,6 +225,12 @@ class Daemon:
                     if time.monotonic() - last_sweep >= cfg.sweep_seconds:
                         self.sweep()
                         last_sweep = time.monotonic()
+                    if (
+                        not cfg.dry_run
+                        and time.monotonic() - last_retry >= RETRY_PASS_INTERVAL
+                    ):
+                        self._retry_pass()
+                        last_retry = time.monotonic()
                     continue
                 self.process_path(path)
         finally:

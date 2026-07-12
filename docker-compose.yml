@@ -11,9 +11,11 @@ services:
       # - STABILITY_SECONDS=120
       # - ARTWORK_MODE=download        # download | generate
       # - MIN_CONFIDENCE=0.6
+      # - PRESERVE_ORIGINAL=false      # true = copy, leave originals in /watch
       # optional: instant Plex partial rescan after organizing
       # - PLEX_URL=http://plex:32400
       # - PLEX_TOKEN=${PLEX_TOKEN}
+      # - PLEX_LIBRARY_PATH=/data/sports   # Plex's mount path for the library
     volumes:
       - /path/to/staging:/watch        # where your recorder drops files
       - /path/to/sports-library:/library   # your Plex sports library root

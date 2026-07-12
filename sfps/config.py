@@ -63,8 +63,9 @@ class Config:
     min_confidence: float = 0.6
     stability_seconds: int = 120
     sweep_seconds: int = 300  # periodic re-scan of /watch (inotify safety net)
-    media_extensions: tuple[str, ...] = (".ts", ".mkv", ".mp4")
+    media_extensions: tuple[str, ...] = (".mp4", ".mkv", ".avi", ".mov", ".mpeg", ".ts")
     artwork_mode: str = "download"  # "download" | "generate"
+    preserve_original: bool = False  # true = copy into library, leave original in /watch
     retry_days: int = 7
     dry_run: bool = False
     log_level: str = "INFO"
@@ -77,6 +78,9 @@ class Config:
     # Optional Plex partial-rescan integration
     plex_url: str = ""
     plex_token: str = ""
+    # If Plex mounts the library at a different path than this container's
+    # /library, set the Plex-side path here (e.g. /data/sports).
+    plex_library_path: str = ""
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> Config:
@@ -92,14 +96,16 @@ class Config:
             sweep_seconds=_int(env.get("SWEEP_SECONDS"), defaults.sweep_seconds),
             media_extensions=_extensions(env.get("MEDIA_EXTENSIONS"), defaults.media_extensions),
             artwork_mode=env.get("ARTWORK_MODE", defaults.artwork_mode).strip().lower(),
+            preserve_original=_bool(env.get("PRESERVE_ORIGINAL"), defaults.preserve_original),
             retry_days=_int(env.get("RETRY_DAYS"), defaults.retry_days),
             dry_run=_bool(env.get("DRY_RUN"), defaults.dry_run),
             log_level=env.get("LOG_LEVEL", defaults.log_level).strip().upper(),
             watch_dir=Path(env.get("WATCH_DIR", str(defaults.watch_dir))),
             library_dir=Path(env.get("LIBRARY_DIR", str(defaults.library_dir))),
             config_dir=Path(env.get("CONFIG_DIR", str(defaults.config_dir))),
-            plex_url=env.get("PLEX_URL", defaults.plex_url),
+            plex_url=env.get("PLEX_URL", defaults.plex_url).rstrip("/"),
             plex_token=env.get("PLEX_TOKEN", defaults.plex_token),
+            plex_library_path=env.get("PLEX_LIBRARY_PATH", defaults.plex_library_path),
         )
 
     def validate(self) -> list[str]:

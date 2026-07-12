@@ -118,6 +118,17 @@ class TheSportsDBClient:
         data = self._get("/eventsday.php", {"d": date, "l": league_id})
         return data.get("events") or []
 
+    def lookup_event(self, event_id: str) -> dict | None:
+        """lookupevent.php — one event by id (used by retry/review)."""
+        data = self._get("/lookupevent.php", {"id": event_id})
+        events = data.get("events") or []
+        return events[0] if events else None
+
+    def search_teams(self, name: str) -> list[dict]:
+        """searchteams.php — teams by name (badge lookup for generated art)."""
+        data = self._get("/searchteams.php", {"t": name.replace(" ", "_")})
+        return data.get("teams") or []
+
     def all_leagues(self) -> list[dict]:
         """all_leagues.php — every league (id, name, sport). Cached per client."""
         if self._leagues_cache is None:

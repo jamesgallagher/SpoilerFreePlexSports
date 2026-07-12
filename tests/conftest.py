@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from sfps import gemini
+from sfps import gemini, matcher
 
 
 @pytest.fixture(autouse=True)
@@ -19,3 +19,13 @@ def _no_real_gemini(monkeypatch):
         )
 
     monkeypatch.setattr(gemini, "generate_json", offline_stub)
+
+
+@pytest.fixture(autouse=True)
+def _no_real_badge_lookups(monkeypatch):
+    """Safety net: generated thumbs must not hit TheSportsDB for team badges.
+
+    Tests of the real function bind it directly at import time
+    (`from sfps.matcher import team_badges`), which bypasses this stub.
+    """
+    monkeypatch.setattr(matcher, "team_badges", lambda event, config, client=None: {})

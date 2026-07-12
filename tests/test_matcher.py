@@ -7,6 +7,7 @@ import httpx
 
 from sfps import matcher
 from sfps.config import Config
+from sfps.matcher import team_badges as real_team_badges  # bypasses conftest stub
 from sfps.models import GameGuess
 from sfps.thesportsdb import TheSportsDBClient
 
@@ -238,6 +239,46 @@ def test_match_survives_api_outage():
 
     with make_client(handler) as client:
         assert matcher.match(GUESS, CONFIG, client=client) is None
+
+
+# --- team badges ---------------------------------------------------------------
+
+
+def test_team_badges_found():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert "searchteams.php" in request.url.path
+        query = parse_qs(urlparse(str(request.url)).query)["t"][0]
+        name = query.replace("_", " ")
+        return httpx.Response(
+            200,
+            json={"teams": [{"strTeam": name, "strBadge": f"https://img.example/{name}.png"}]},
+        )
+
+    event = matcher._to_safe_event(RAW_EVENT)
+    with make_client(handler) as client:
+        urls = real_team_badges(event, CONFIG, client=client)
+    assert set(urls) == {"home", "away"}
+    assert "Texas Super Kings" in urls["home"]
+
+
+def test_team_badges_rejects_wrong_team():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json={"teams": [{"strTeam": "Chennai Super Kings", "strBadge": "https://x/b.png"}]}
+        )
+
+    event = matcher._to_safe_event(RAW_EVENT)
+    with make_client(handler) as client:
+        urls = real_team_badges(event, CONFIG, client=client)
+    # "Chennai Super Kings" vs "Washington Freedom" must not fuzzy-match
+    assert "away" not in urls
+
+
+def test_team_badges_empty_for_non_team_event():
+    raw = dict(RAW_EVENT, strHomeTeam="", strAwayTeam="")
+    event = matcher._to_safe_event(raw)
+    with make_client(lambda r: httpx.Response(200, json={"teams": None})) as client:
+        assert real_team_badges(event, CONFIG, client=client) == {}
 
 
 # --- artwork download ---------------------------------------------------------

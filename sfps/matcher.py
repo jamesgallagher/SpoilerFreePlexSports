@@ -214,17 +214,17 @@ def _accept(raw: dict, via: str) -> SafeEvent:
     return event
 
 
-def download_artwork(
-    event: SafeEvent, dest_dir: Path, config: Config, client: TheSportsDBClient | None = None
+def download_urls(
+    urls: dict[str, str], dest_dir: Path, config: Config, client: TheSportsDBClient | None = None
 ) -> dict[str, Path]:
-    """Download the event's artwork into dest_dir; returns kind -> file path."""
+    """Download a kind->url map into dest_dir; returns kind -> file path."""
     own_client = client is None
     if own_client:
         client = TheSportsDBClient(config)
     saved: dict[str, Path] = {}
     try:
         dest_dir.mkdir(parents=True, exist_ok=True)
-        for kind, url in event.artwork.items():
+        for kind, url in urls.items():
             suffix = Path(url.split("?")[0]).suffix or ".jpg"
             target = dest_dir / f"{kind}{suffix}"
             try:
@@ -237,3 +237,40 @@ def download_artwork(
         if own_client:
             client.close()
     return saved
+
+
+def download_artwork(
+    event: SafeEvent, dest_dir: Path, config: Config, client: TheSportsDBClient | None = None
+) -> dict[str, Path]:
+    """Download the event's artwork into dest_dir; returns kind -> file path."""
+    return download_urls(event.artwork, dest_dir, config, client=client)
+
+
+def team_badges(
+    event: SafeEvent, config: Config, client: TheSportsDBClient | None = None
+) -> dict[str, str]:
+    """Badge URLs for the event's teams ({"home": url, "away": url}) when found."""
+    urls: dict[str, str] = {}
+    if not (event.home_team and event.away_team):
+        return urls
+    own_client = client is None
+    if own_client:
+        client = TheSportsDBClient(config)
+    try:
+        for side, team in (("home", event.home_team), ("away", event.away_team)):
+            for raw in client.search_teams(team):
+                name_ok = _similar(team, str(raw.get("strTeam") or "")) >= _TEAM_THRESHOLD
+                if name_ok and raw.get("strBadge"):
+                    urls[side] = str(raw["strBadge"])
+                    break
+    except TheSportsDBError as exc:
+        log.warning("badges: lookup failed (%s)", exc)
+    finally:
+        if own_client:
+            client.close()
+    return urls
+
+
+def to_safe_event(raw: dict) -> SafeEvent:
+    """Public spoiler-firewall crossing for raw event payloads (retry/review)."""
+    return _to_safe_event(raw)
