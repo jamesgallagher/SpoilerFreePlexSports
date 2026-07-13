@@ -62,7 +62,7 @@ def test_teamless_event_uses_league_fallback(config: Config, fake_recording: Pat
         sport="Cycling",
         league="UCI World Tour",
         event_date="2026-07-12",
-        artwork={"thumb": "https://x/fanart.jpg", "poster": "https://x/poster.jpg"},
+        artwork={"thumb": "https://x/fanart.jpg"},
     )
 
     monkeypatch.setattr(identifier, "identify", lambda path, cfg: guess)

@@ -73,10 +73,9 @@ def test_safe_event_strips_all_result_fields():
     # ...while the safe fields survive
     assert event.event_id == "2052711"
     assert event.venue == "Grand Prairie Stadium"
-    assert event.artwork == {
-        "thumb": "https://img.example/event/thumb.jpg",
-        "poster": "https://img.example/event/poster.jpg",
-    }
+    # Thumb only: the library's Plex setup doesn't support poster/backdrop
+    # artwork, so strPoster must not cross the firewall even though it's present.
+    assert event.artwork == {"thumb": "https://img.example/event/thumb.jpg"}
 
 
 def test_safe_event_type_has_no_score_fields():
@@ -588,13 +587,11 @@ def _league_fallback_handler(**flags):
     return handler
 
 
-def test_league_artwork_urls_whitelists_and_prefers_landscape_thumb():
+def test_league_artwork_urls_returns_thumb_only_preferring_fanart():
+    """Only a thumb is ever produced - the library doesn't support poster/
+    backdrop artwork - and fanart (16:9) is preferred over the league poster."""
     urls = matcher.league_artwork_urls(RAW_LEAGUE)
-    assert urls == {
-        "thumb": "https://img.example/league/fanart.jpg",  # fanart preferred for 16:9 thumb
-        "poster": "https://img.example/league/poster.jpg",
-        "fanart": "https://img.example/league/fanart.jpg",
-    }
+    assert urls == {"thumb": "https://img.example/league/fanart.jpg"}
 
 
 def test_league_artwork_urls_thumb_falls_back_to_banner_then_poster():
@@ -663,23 +660,32 @@ def test_league_fallback_survives_api_outage():
 
 
 def test_download_artwork(tmp_path):
+    """download_artwork downloads event.artwork, which only ever has a
+    "thumb" key - the library's Plex setup doesn't support poster/backdrop
+    artwork, so that's all the firewall (_ARTWORK_FIELDS) ever lets through."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, content=b"\xff\xd8fakejpeg")
 
     event = matcher._to_safe_event(RAW_EVENT)
     with make_client(handler) as client:
         saved = matcher.download_artwork(event, tmp_path / "art", CONFIG, client=client)
-    assert set(saved) == {"thumb", "poster"}
+    assert set(saved) == {"thumb"}
     assert (tmp_path / "art" / "thumb.jpg").read_bytes().startswith(b"\xff\xd8")
 
 
-def test_download_artwork_partial_failure(tmp_path):
+def test_download_urls_partial_failure(tmp_path):
+    """download_urls (the general multi-kind downloader) tolerates one URL
+    failing without losing the others. Exercised directly with a synthetic
+    multi-key map, since a real SafeEvent's artwork dict only ever carries
+    a single "thumb" key."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         if "poster" in str(request.url):
             return httpx.Response(404)
         return httpx.Response(200, content=b"img")
 
-    event = matcher._to_safe_event(RAW_EVENT)
+    urls = {"thumb": "https://img.example/thumb.jpg", "poster": "https://img.example/poster.jpg"}
     with make_client(handler) as client:
-        saved = matcher.download_artwork(event, tmp_path / "art", CONFIG, client=client)
+        saved = matcher.download_urls(urls, tmp_path / "art", CONFIG, client=client)
     assert set(saved) == {"thumb"}

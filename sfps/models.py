@@ -45,7 +45,8 @@ class SafeEvent:
     venue: str = ""
     city: str = ""
     country: str = ""
-    # Artwork URLs by kind: "thumb" | "poster" | "fanart" | "banner" | "square"
+    # Artwork URLs by kind. Only "thumb" is ever populated: the library's
+    # Plex setup doesn't support poster/backdrop artwork.
     artwork: dict[str, str] = field(default_factory=dict)
 
 

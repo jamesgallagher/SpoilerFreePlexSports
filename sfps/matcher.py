@@ -30,13 +30,11 @@ _TEAM_THRESHOLD = 0.7
 _LEAGUE_THRESHOLD = 0.5
 # Sport matching is word-based via _sport_matches(), not a fuzzy threshold.
 
-# Which artwork fields cross the firewall, and what we call them
+# Which artwork fields cross the firewall, and what we call them.
+# Thumb only: the library's Plex setup doesn't support poster/backdrop
+# artwork, so only the landscape episode thumb is ever downloaded or placed.
 _ARTWORK_FIELDS = {
     "strThumb": "thumb",
-    "strPoster": "poster",
-    "strFanart": "fanart",
-    "strBanner": "banner",
-    "strSquare": "square",
 }
 
 
@@ -371,25 +369,20 @@ def to_safe_event(raw: dict) -> SafeEvent:
 
 
 def league_artwork_urls(raw: dict) -> dict[str, str]:
-    """Whitelist a raw league payload's branding into artwork kinds.
+    """Whitelist a raw league payload's branding into a landscape episode thumb.
 
-    League/competition art (a tournament poster, banner, fanart) is generic to
+    League/competition art (a tournament's fanart/banner/poster) is generic to
     the competition and structurally cannot reveal a result, so it is the safe
-    fallback for teamless events. The episode thumb wants a landscape image, so
-    it prefers fanart, then the banner, then the poster.
+    fallback for teamless events. Only the thumb is ever used (the library's
+    Plex setup doesn't support poster/backdrop artwork), so this picks the
+    single best landscape image: fanart, else the banner, else the poster.
     """
-    fanart = str(raw.get("strFanart1") or "")
-    banner = str(raw.get("strBanner") or "")
-    poster = str(raw.get("strPoster") or "")
-    urls: dict[str, str] = {}
-    thumb = fanart or banner or poster
-    if thumb:
-        urls["thumb"] = thumb
-    if poster:
-        urls["poster"] = poster
-    if fanart:
-        urls["fanart"] = fanart
-    return urls
+    thumb = (
+        str(raw.get("strFanart1") or "")
+        or str(raw.get("strBanner") or "")
+        or str(raw.get("strPoster") or "")
+    )
+    return {"thumb": thumb} if thumb else {}
 
 
 def _discover_league(client: TheSportsDBClient, guess: GameGuess) -> dict | None:

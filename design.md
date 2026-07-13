@@ -16,9 +16,9 @@ This project is an external companion service ("plugin" in spirit — Plex remov
 real plugin system in 2018, so this runs alongside Plex, not inside it) that watches
 for new sports recordings and gets to them **before Plex does**, giving every game:
 
-- A **spoiler-free poster/thumbnail** (downloaded pre-match artwork, or a generated
-  neutral placeholder)
-- A **background** (fanart) where available
+- A **spoiler-free landscape thumbnail** (downloaded pre-match artwork, or a
+  generated neutral placeholder) — the only artwork this tool writes; this
+  library's Plex setup doesn't support poster/backdrop art
 - A **metadata sidecar** describing the game — with **no result information**
 - Its own tidy directory, named so Plex's TV agent and Local Media Assets pick
   everything up on the next scan
@@ -38,7 +38,7 @@ Plex may reveal the outcome of a game.** Concretely:
 3. **Descriptions are pre-match only.** Sidecar/summary text is limited to league,
    round/week, venue, date, teams. No "recap"-style strings from the API.
 4. **Beat Plex's frame-grab.** Supplying a local thumb (`<filename>.jpg`) makes Plex
-   use it as the episode poster instead of a generated frame. The deployment guide
+   use it as the episode image instead of a generated frame. The deployment guide
    will also document turning **off** "Video preview thumbnails" for the sports
    library, since those chapter-strip images are generated from the video itself and
    can still leak scores on the seek bar.
@@ -67,7 +67,7 @@ Plex may reveal the outcome of a game.** Concretely:
                         │  │ Organizer                         │       │
                         │  │ • create game directory           │       │
                         │  │ • move media file                 │       │
-                        │  │ • write thumb / poster / bg       │       │
+                        │  │ • write episode thumb (only art)  │       │
                         │  │ • write spoiler-free sidecar      │       │
                         │  │ • fallback: "Unknown Event" thumb │       │
                         │  └───────────────┬───────────────────┘       │
@@ -172,10 +172,14 @@ long tail.
 - **Verification:** a candidate event must match on both team names (fuzzy,
   normalized) **and** date window before it's accepted. League mismatch downgrades
   to unknown.
-- **Artwork harvested per event:** `strThumb` (→ episode thumb), `strPoster`
-  (→ poster), `strFanart` (→ background), `strBanner`, `strSquare` (kept in sidecar
-  URLs but not required). Team badges (`strBadge`) and league art are fetched as
-  fallbacks for generated artwork.
+- **Artwork harvested per event:** `strThumb` only, → the episode thumb. This
+  library's Plex setup doesn't support poster/backdrop artwork, so
+  `strPoster` / `strFanart` / `strBanner` / `strSquare` are deliberately never
+  read past the raw API response (`matcher._ARTWORK_FIELDS`). Team badges
+  (`strBadge`) and league art are still fetched as generated-thumb fallbacks
+  (badge-vs-badge matchup cards, league fanart/banner/poster for teamless
+  events — always composited or downloaded into the one thumb file, never
+  written out as a separate poster/background).
 - **Spoiler firewall:** the API client returns a `SafeEvent` dataclass that simply
   has no score/result fields. Raw responses are never passed downstream or logged
   above DEBUG.
@@ -188,17 +192,20 @@ Local Media Assets enabled):
 ```
 /library/
   English Premier League/
-    poster.jpg                      # league poster (from TheSportsDB league art)
-    background.jpg                  # league fanart
+    tvshow.nfo                      # Kodi show NFO (league name, sport)
     Season 2026/
       Arsenal vs Chelsea 2026-07-12/
         English Premier League - 2026-07-12 - Arsenal vs Chelsea.mkv
-        English Premier League - 2026-07-12 - Arsenal vs Chelsea.jpg   # episode thumb (spoiler-free)
+        English Premier League - 2026-07-12 - Arsenal vs Chelsea.jpg   # episode thumb (spoiler-free, only artwork used)
         English Premier League - 2026-07-12 - Arsenal vs Chelsea.nfo   # Kodi episode NFO (Plex NFO agent)
-        poster.jpg                  # game poster (if available)
-        background.jpg              # game background (if available)
         game.json                   # spoiler-free metadata sidecar
 ```
+
+Thumb only, deliberately: this library's Plex setup doesn't support poster/
+backdrop artwork, so no `poster.jpg` / `background.jpg` is ever downloaded or
+written — at either the game or the league (show) level. `matcher.py`'s
+`_ARTWORK_FIELDS` and `league_artwork_urls` never surface anything but
+`"thumb"`, and `organizer.ART_PLACEMENT` only knows how to place it.
 
 - **Metadata enrichment (matched events only):** `metadata.py` builds a
   spoiler-free summary from the available TheSportsDB fields (sport, league,
@@ -224,6 +231,7 @@ Local Media Assets enabled):
 ```json
 {
   "matched": true,
+  "match_level": "event",
   "sport": "Soccer",
   "league": "English Premier League",
   "season": "2026-2027",
@@ -235,7 +243,7 @@ Local Media Assets enabled):
   "thesportsdb_event_id": "1032723",
   "identifier": {"source": "gemini", "confidence": 0.92},
   "variant": "full",
-  "artwork": {"thumb": "downloaded", "poster": "downloaded", "background": "none"},
+  "artwork": {"thumb": "downloaded"},
   "processed_at": "2026-07-12T21:14:03+10:00",
   "spoiler_free": true
 }
@@ -250,12 +258,14 @@ Local Media Assets enabled):
   events by the competition name and reading the winning event's `idLeague`
   (the LLM's viewer-facing name — "Tour de France" — rarely matches the DB's
   broader league — "UCI World Tour" — so an event→league link is used, not a
-  league-name match), then looks that league up and uses its **poster / banner /
-  fanart** as the recording's artwork. Competition branding is generic and
-  structurally cannot reveal a result, so this is spoiler-safe; the item is
-  filed under the competition (`match_level: "league"` in the sidecar, empty
-  `thesportsdb_event_id`). Team games are left to the badge-vs-badge card — a
-  real matchup card beats a league poster there.
+  league-name match), then looks that league up and uses its best available
+  **landscape image** (fanart, else banner, else poster — `matcher.
+  league_artwork_urls`) as the recording's single thumb; no separate
+  poster/background file is ever written. Competition branding is generic
+  and structurally cannot reveal a result, so this is spoiler-safe; the item
+  is filed under the competition (`match_level: "league"` in the sidecar,
+  empty `thesportsdb_event_id`). Team games are left to the badge-vs-badge
+  card — a real matchup card beats a league image there.
 
 - **Unknown Event path:** if identification or matching fails, the file still gets
   organized — into `/library/Unknown Events/<original name>/` — with a supplied
@@ -281,8 +291,9 @@ Handling across the pipeline:
   through to the sidecar.
 - **Matching:** variant tokens are stripped before event lookup — a highlights
   package matches the *same* TheSportsDB event as the full game.
-- **Artwork:** the variant uses the main game's thumb and poster, with a small
-  **badge composited onto the thumb** (Pillow, bottom-right corner): a
+- **Artwork:** the variant uses the main game's thumb (the only artwork this
+  library uses), with a small **badge composited onto the thumb** (Pillow,
+  bottom-right corner): a
   "HIGHLIGHTS" badge or a "MINI" badge. Badge assets live in `/config/badges/`
   (`highlights.png`, `mini.png`) and are user-replaceable; temporary generated
   badges (text-on-pill) are used until supplied — same approach as the
@@ -451,7 +462,7 @@ touching the filesystem by hand.
 | # | Risk / question | Current position |
 |---|---|---|
 | 1 | **Wrong match = wrong artwork on wrong game.** | Confidence gate + team+date verification; below threshold ⇒ Unknown placeholder (safe failure). |
-| 2 | **TheSportsDB per-game artwork is sparse** outside big leagues. | Fall back league/team art → generated badge composite (Phase 7) → placeholder. Teamless events (races/tours) with no verifiable event fall back to competition-level league art (`league_fallback`) before Unknown. Thumb is the must-have; poster/background best-effort. |
+| 2 | **TheSportsDB per-game artwork is sparse** outside big leagues. | Fall back league/team art → generated badge composite (Phase 7) → placeholder. Teamless events (races/tours) with no verifiable event fall back to competition-level league art (`league_fallback`) before Unknown. Only the thumb is required or ever written; this library doesn't use poster/background artwork at all. |
 | 3 | **Downloaded event art could itself contain a result.** | Rare but real; `ARTWORK_MODE=generate` is the zero-risk escape hatch. |
 | 4 | **Plex may still frame-grab** if it scans before art exists. | Staging-folder deployment means art always lands with (before) the media file. |
 | 5 | **Overnight/timezone date shifts.** | `TZ` env + ±1-day search window + Gemini prompt rules; fixture-tested. |

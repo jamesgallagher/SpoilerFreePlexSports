@@ -4,8 +4,7 @@ Layout (design.md §3.4, Plex TV library + Local Media Assets):
 
     /library/<League>/Season <YYYY>/<Home> vs <Away> <date>[ (Highlights)]/
         <League> - <date> - <Home> vs <Away>[ (Highlights)].<ext>
-        <League> - <date> - <Home> vs <Away>[ (Highlights)].jpg   # episode thumb
-        poster.jpg / background.jpg                               # if available
+        <League> - <date> - <Home> vs <Away>[ (Highlights)].jpg   # episode thumb (only art used)
         game.json                                                 # spoiler-free sidecar
 
 Unmatched files go to /library/Unknown Events/<name>/ with a placeholder
@@ -140,11 +139,12 @@ def _write_sidecar(
     return sidecar
 
 
-# artwork kind -> (sidecar status key, filename; None = named after the episode)
+# artwork kind -> (sidecar status key, filename; None = named after the episode).
+# Thumb only: the library's Plex setup doesn't support poster/backdrop
+# artwork, so no other kind is ever downloaded or placed (see matcher.py's
+# _ARTWORK_FIELDS / league_artwork_urls, which never surface one).
 ART_PLACEMENT = {
     "thumb": ("thumb", None),
-    "poster": ("poster", "poster.jpg"),
-    "fanart": ("background", "background.jpg"),
 }
 
 
@@ -233,8 +233,8 @@ def generate_unmatched_thumb(guess: GameGuess, thumb_path: Path, config: Config)
 def _place_artwork(
     event: SafeEvent, guess: GameGuess, target_dir: Path, episode_stem: str, config: Config
 ) -> dict[str, str]:
-    """Download/generate thumb, poster, background into the game directory."""
-    status = {"thumb": "none", "poster": "none", "background": "none"}
+    """Download/generate the episode thumb (only artwork this library uses)."""
+    status = {"thumb": "none"}
     thumb_path = target_dir / f"{episode_stem}.jpg"
 
     if config.artwork_mode == "download" and event.artwork:
@@ -317,15 +317,11 @@ def organize(
         status = "unknown"
     else:
         art_status = _place_artwork(event, guess, target_dir, media_target.stem, config)
-        art_written = [
-            str(target_dir / name)
-            for name, key in [
-                (f"{media_target.stem}.jpg", "thumb"),
-                ("poster.jpg", "poster"),
-                ("background.jpg", "background"),
-            ]
-            if art_status.get(key, "none") != "none"
-        ]
+        art_written = (
+            [str(target_dir / f"{media_target.stem}.jpg")]
+            if art_status.get("thumb", "none") != "none"
+            else []
+        )
         # Enrich the Plex card (NFO agent reads these). Matched events only.
         metadata.write_episode_nfo(event, target_dir / f"{media_target.stem}.nfo", guess.variant)
         if event.league:

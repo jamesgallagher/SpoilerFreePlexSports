@@ -30,8 +30,9 @@ from sfps.thesportsdb import TheSportsDBClient, TheSportsDBError
 
 log = logging.getLogger(__name__)
 
-# sidecar artwork key -> SafeEvent artwork kind
-_SIDECAR_TO_KIND = {"thumb": "thumb", "poster": "poster", "background": "fanart"}
+# sidecar artwork key -> SafeEvent artwork kind. Thumb only: the library's
+# Plex setup doesn't support poster/backdrop artwork (organizer.ART_PLACEMENT).
+_SIDECAR_TO_KIND = {"thumb": "thumb"}
 
 
 def _within_window(iso: str, days: int) -> bool:

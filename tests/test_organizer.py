@@ -19,11 +19,8 @@ EVENT = SafeEvent(
     away_team="Washington Freedom",
     event_date="2026-07-11",
     venue="Grand Prairie Stadium",
-    artwork={
-        "thumb": "https://img.example/thumb.jpg",
-        "poster": "https://img.example/poster.jpg",
-        "fanart": "https://img.example/fanart.jpg",
-    },
+    # Thumb only: the library's Plex setup doesn't support poster/backdrop art.
+    artwork={"thumb": "https://img.example/thumb.jpg"},
 )
 
 GUESS = GameGuess(
@@ -121,8 +118,9 @@ def test_organize_matched(config: Config, recording: Path, fake_downloads):
     stem = "Major League Cricket - 2026-07-11 - Texas Super Kings vs Washington Freedom"
     assert (target / f"{stem}.mkv").is_file()
     assert (target / f"{stem}.jpg").is_file()  # episode thumb, Local Media Assets naming
-    assert (target / "poster.jpg").is_file()
-    assert (target / "background.jpg").is_file()
+    # No poster/background: the library's Plex setup doesn't support them.
+    assert not (target / "poster.jpg").exists()
+    assert not (target / "background.jpg").exists()
     assert not recording.exists()  # moved, not copied
 
     sidecar = json.loads((target / "game.json").read_text(encoding="utf-8"))
@@ -160,11 +158,8 @@ def test_organize_league_fallback_files_under_competition(
         league="UCI World Tour",
         round="Stage 8",
         event_date="2026-07-12",
-        artwork={
-            "thumb": "https://img.example/league/fanart.jpg",
-            "poster": "https://img.example/league/poster.jpg",
-            "fanart": "https://img.example/league/fanart.jpg",
-        },
+        # Thumb only: the library's Plex setup doesn't support poster/backdrop art.
+        artwork={"thumb": "https://img.example/league/fanart.jpg"},
     )
     guess = GameGuess(
         identified=True,
@@ -191,6 +186,8 @@ def test_organize_league_fallback_files_under_competition(
     assert sidecar["thesportsdb_event_id"] == ""
     assert sidecar["artwork"]["thumb"] == "downloaded+badge"
     assert sidecar["spoiler_free"] is True
+    assert not (target / "poster.jpg").exists()
+    assert not (target / "background.jpg").exists()
 
 
 def test_organize_highlights_badges_thumb(config: Config, recording: Path, fake_downloads):
@@ -221,7 +218,7 @@ def test_organize_generates_card_when_no_thumb(config: Config, recording: Path, 
     target = Path(result.target_dir)
     sidecar = json.loads((target / "game.json").read_text(encoding="utf-8"))
     assert sidecar["artwork"]["thumb"] == "generated"
-    thumbs = [p for p in target.glob("*.jpg") if p.name not in ("poster.jpg", "background.jpg")]
+    thumbs = list(target.glob("*.jpg"))  # only the thumb is ever written now
     assert len(thumbs) == 1
     assert Image.open(thumbs[0]).size == (1280, 720)
 
@@ -285,7 +282,7 @@ def test_generated_badge_matchup_card(config: Config, recording: Path, monkeypat
     target = Path(result.target_dir)
     sidecar = json.loads((target / "game.json").read_text(encoding="utf-8"))
     assert sidecar["artwork"]["thumb"] == "generated-badges"
-    thumbs = [p for p in target.glob("*.jpg") if p.name not in ("poster.jpg", "background.jpg")]
+    thumbs = list(target.glob("*.jpg"))  # only the thumb is ever written now
     assert PILImage.open(thumbs[0]).size == (1280, 720)
 
 

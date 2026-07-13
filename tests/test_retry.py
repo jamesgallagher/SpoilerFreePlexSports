@@ -200,27 +200,22 @@ def fake_download_urls(urls, dest_dir, config, client=None):
 
 
 def test_retry_artwork_upgrades(config: Config, monkeypatch):
-    game_dir = make_organized(
-        config, {"thumb": "generated", "poster": "none", "background": "none"}
-    )
+    game_dir = make_organized(config, {"thumb": "generated"})
     monkeypatch.setattr(matcher, "download_urls", fake_download_urls)
 
     stats = retry.retry_artwork(config, client=FakeClient())
 
     assert stats == {"checked": 1, "updated": 1}
     assert (game_dir / "MLC - 2026-07-11 - TSK vs WF.jpg").is_file()
-    assert (game_dir / "poster.jpg").is_file()
+    # No poster/background: the library's Plex setup doesn't support them.
+    assert not (game_dir / "poster.jpg").exists()
     data = json.loads((game_dir / "game.json").read_text(encoding="utf-8"))
     assert data["artwork"]["thumb"] == "downloaded"
-    assert data["artwork"]["poster"] == "downloaded"
     assert "artwork_updated_at" in data
 
 
 def test_retry_artwork_skips_complete(config: Config):
-    make_organized(
-        config,
-        {"thumb": "downloaded", "poster": "downloaded", "background": "downloaded"},
-    )
+    make_organized(config, {"thumb": "downloaded"})
     stats = retry.retry_artwork(config, client=FakeClient())
     assert stats == {"checked": 0, "updated": 0}
 

@@ -20,7 +20,6 @@ file.
     Arsenal vs Chelsea 2026-07-12 (Highlights)/
       English Premier League - 2026-07-12 - Arsenal vs Chelsea (Highlights).ts
       English Premier League - 2026-07-12 - Arsenal vs Chelsea (Highlights).jpg   ← pre-match art + HIGHLIGHTS badge
-      poster.jpg / background.jpg
       game.json                                                                    ← metadata, no scores, ever
 ```
 
@@ -108,7 +107,7 @@ Plex shows depends on the library's **Agent**:
 | Setting | Value | Why |
 |---|---|---|
 | **Agent** | **Plex NFO** (recommended) | Reads the `.nfo` so the card shows the enriched title + description (e.g. *"Rugby Nations Championship (Round 2): Australia Rugby vs France Rugby at Suncorp Stadium, Brisbane on 11 July 2026."*). Requires **PMS 1.43.1+**. Falls back to **Plex TV Series** if you only want artwork. |
-| **Local Media Assets** | **Enabled**, ordered **first** (Settings → Agents) | This is how the spoiler-free thumbs/posters get used |
+| **Local Media Assets** | **Enabled**, ordered **first** (Settings → Agents) | This is how the spoiler-free episode thumbs get used |
 | **Video preview thumbnails** | **Disabled** | Plex generates these from the video — they leak scores on the seek bar |
 | Seasons | Show | One season per year per league |
 
@@ -192,7 +191,7 @@ docker exec spoilerfreeplexsports sfps health     # heartbeat check
   text card as the last resort).
 - **Teamless events** — races, tours, individual sports (e.g. a Tour de
   France stage) — that identify to a competition but have no verifiable
-  per-event record fall back to the **competition's own poster/banner**
+  per-event record fall back to the **competition's own landscape artwork**
   from TheSportsDB and are filed under that competition, instead of landing
   in Unknown Events. Competition branding can't reveal a result, so it stays
   spoiler-safe.
